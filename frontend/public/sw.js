@@ -1,5 +1,16 @@
 const CACHE_NAME = 'attendance-pwa-v1';
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-attendance.svg', '/icons/icon-maskable.svg'];
+const APP_SHELL = [
+    '/',
+    '/public-attendance',
+    '/index.html',
+    '/manifest.webmanifest',
+    '/icons/icon-attendance.svg',
+    '/icons/icon-maskable.svg',
+    '/icons/icon-192.png',
+    '/icons/icon-512.png',
+    '/icons/icon-maskable-512.png',
+    '/icons/apple-touch-icon.png'
+];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
