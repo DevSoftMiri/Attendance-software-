@@ -6,32 +6,69 @@ const faceApi = axios.create({
     timeout: 30000
 });
 
+function rethrowFaceServiceError(error) {
+    const statusCode = error?.response?.status || 500;
+    const upstreamMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.detail ||
+        error?.message ||
+        'Face service request failed';
+
+    const wrappedError = new Error(upstreamMessage);
+    wrappedError.statusCode = statusCode;
+    throw wrappedError;
+}
+
 export async function verifyFace(payload) {
-    const { data } = await faceApi.post('/face/verify', payload);
-    return data;
+    try {
+        const { data } = await faceApi.post('/face/verify', payload);
+        return data;
+    } catch (error) {
+        rethrowFaceServiceError(error);
+    }
 }
 
 export async function identifyFace(payload) {
-    const { data } = await faceApi.post('/face/identify', payload);
-    return data;
+    try {
+        const { data } = await faceApi.post('/face/identify', payload);
+        return data;
+    } catch (error) {
+        rethrowFaceServiceError(error);
+    }
 }
 
 export async function enrolFace(payload) {
-    const { data } = await faceApi.post('/face/enrol', payload);
-    return data;
+    try {
+        const { data } = await faceApi.post('/face/enrol', payload);
+        return data;
+    } catch (error) {
+        rethrowFaceServiceError(error);
+    }
 }
 
 export async function checkFaceQuality(payload) {
-    const { data } = await faceApi.post('/face/check-quality', payload);
-    return data;
+    try {
+        const { data } = await faceApi.post('/face/check-quality', payload);
+        return data;
+    } catch (error) {
+        rethrowFaceServiceError(error);
+    }
 }
 
 export async function removeFaceProfile(employeeId) {
-    const { data } = await faceApi.delete(`/face/${employeeId}`);
-    return data;
+    try {
+        const { data } = await faceApi.delete(`/face/${employeeId}`);
+        return data;
+    } catch (error) {
+        rethrowFaceServiceError(error);
+    }
 }
 
 export async function getFaceProfile(employeeId) {
-    const { data } = await faceApi.get(`/face/${employeeId}`);
-    return data;
+    try {
+        const { data } = await faceApi.get(`/face/${employeeId}`);
+        return data;
+    } catch (error) {
+        rethrowFaceServiceError(error);
+    }
 }
