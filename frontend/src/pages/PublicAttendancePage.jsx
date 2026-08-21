@@ -39,6 +39,7 @@ export default function PublicAttendancePage() {
     });
     const [lastResult, setLastResult] = useState(null);
     const [scanning, setScanning] = useState(true);
+    const [cameraReady, setCameraReady] = useState(false);
     const [loadingAction, setLoadingAction] = useState('');
     const [scanStatus, setScanStatus] = useState('Preparing camera...');
 
@@ -52,7 +53,7 @@ export default function PublicAttendancePage() {
             actionMode: 'CHECK_IN'
         });
         setLastResult(null);
-        setScanStatus('Scanning for an enrolled face...');
+        setScanStatus(cameraReady ? 'Scanning for an enrolled face...' : 'Preparing camera...');
         setScanning(true);
     }
 
@@ -100,7 +101,7 @@ export default function PublicAttendancePage() {
         let intervalId;
 
         async function scanFace() {
-            if (!active || !webcamRef.current || !scanning || detectedEmployee?.id) {
+            if (!active || !webcamRef.current || !cameraReady || !scanning || detectedEmployee?.id) {
                 return;
             }
 
@@ -171,7 +172,18 @@ export default function PublicAttendancePage() {
                 clearInterval(intervalId);
             }
         };
-    }, [detectedEmployee?.id, scanning]);
+    }, [cameraReady, detectedEmployee?.id, scanning]);
+
+    useEffect(() => {
+        if (!cameraReady && !detectedEmployee?.id) {
+            setScanStatus('Preparing camera...');
+            return;
+        }
+
+        if (cameraReady && scanning && !detectedEmployee?.id) {
+            setScanStatus('Scanning for an enrolled face...');
+        }
+    }, [cameraReady, detectedEmployee?.id, scanning]);
 
     async function installApp() {
         if (!deferredInstallPromptRef.current) {
@@ -201,6 +213,10 @@ export default function PublicAttendancePage() {
     async function submitAttendance(actionType) {
         if (!webcamRef.current) {
             toast.error('Camera not ready');
+            return;
+        }
+        if (!cameraReady) {
+            toast.error('Camera is still warming up');
             return;
         }
         if (!isOnline) {
@@ -265,6 +281,7 @@ export default function PublicAttendancePage() {
         : installContext.isChromiumMobile
             ? 'Install the attendance kiosk for a full-screen, app-like check-in flow on this device.'
             : 'Use your browser install option to pin this kiosk for faster daily attendance.';
+    const isInstalledApp = installContext.isStandalone;
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,205,102,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(77,197,255,0.18),_transparent_30%),linear-gradient(180deg,_#0b1020_0%,_#111627_56%,_#090e1b_100%)] px-3 py-3 text-white sm:px-4 sm:py-6 lg:py-8">
@@ -302,41 +319,60 @@ export default function PublicAttendancePage() {
                     </div>
                 </div>
             ) : null}
-            <div className="mx-auto grid min-h-[100dvh] max-w-7xl gap-4 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.05fr_0.95fr] lg:gap-6">
+            <div className={`mx-auto grid min-h-[100dvh] max-w-7xl gap-4 lg:min-h-[calc(100vh-4rem)] lg:gap-6 ${isInstalledApp ? 'lg:grid-cols-1' : 'lg:grid-cols-[1.05fr_0.95fr]'}`}>
                 <section className="flex min-h-[100dvh] flex-col rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-soft backdrop-blur-xl sm:p-5 lg:min-h-0 lg:rounded-[32px] lg:p-8">
                     <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Public attendance kiosk</div>
                     <h1 className="mt-3 max-w-xl text-2xl font-semibold text-white sm:text-3xl lg:text-4xl">Mark present or logout without login</h1>
-                    <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-200">
-                        This page scans the face automatically, checks office location, and allows the matched employee to confirm attendance directly from the kiosk.
-                    </p>
+                    {!isInstalledApp ? (
+                        <>
+                            <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-200">
+                                This page scans the face automatically, checks office location, and allows the matched employee to confirm attendance directly from the kiosk.
+                            </p>
 
-                    <div className="mt-5 grid gap-3 rounded-[24px] border border-white/10 bg-black/15 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                        <div>
-                            <div className="text-sm font-medium text-white">{isOnline ? 'PWA ready for kiosk install' : 'Offline mode detected'}</div>
-                            <p className="mt-1 text-sm leading-6 text-ink-200">
-                                {isOnline
-                                    ? 'Install this on your kiosk phone, tablet, or desktop for a full-screen attendance experience.'
-                                    : 'The app shell stays available offline, but attendance still needs internet because face verification and policy checks run on the server.'}
-                            </p>
-                            <p className="mt-2 text-xs uppercase tracking-[0.28em] text-[#ffd166]">
-                                {installContext.isIos ? 'iPhone: Share > Add to Home Screen' : installReady ? 'Install prompt available on this device' : 'Use browser install menu if prompt is unavailable'}
-                            </p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={installApp}
-                            className="rounded-full border border-[#ffd166]/40 bg-[#ffd166]/10 px-5 py-3 text-sm font-medium text-[#ffe4a3]"
-                        >
-                            {installContext.isIos ? 'iPhone Install Steps' : installReady ? 'Install App' : 'How to Install'}
-                        </button>
-                    </div>
+                            <div className="mt-5 grid gap-3 rounded-[24px] border border-white/10 bg-black/15 p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                                <div>
+                                    <div className="text-sm font-medium text-white">{isOnline ? 'PWA ready for kiosk install' : 'Offline mode detected'}</div>
+                                    <p className="mt-1 text-sm leading-6 text-ink-200">
+                                        {isOnline
+                                            ? 'Install this on your kiosk phone, tablet, or desktop for a full-screen attendance experience.'
+                                            : 'The app shell stays available offline, but attendance still needs internet because face verification and policy checks run on the server.'}
+                                    </p>
+                                    <p className="mt-2 text-xs uppercase tracking-[0.28em] text-[#ffd166]">
+                                        {installContext.isIos ? 'iPhone: Share > Add to Home Screen' : installReady ? 'Install prompt available on this device' : 'Use browser install menu if prompt is unavailable'}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={installApp}
+                                    className="rounded-full border border-[#ffd166]/40 bg-[#ffd166]/10 px-5 py-3 text-sm font-medium text-[#ffe4a3]"
+                                >
+                                    {installContext.isIos ? 'iPhone Install Steps' : installReady ? 'Install App' : 'How to Install'}
+                                </button>
+                            </div>
+                        </>
+                    ) : null}
 
                     <div className="mt-5 overflow-hidden rounded-[24px] border border-white/10 bg-black/25 sm:mt-6 sm:rounded-[28px]">
                         <Webcam
                             audio={false}
                             ref={webcamRef}
                             screenshotFormat="image/jpeg"
-                            videoConstraints={{ facingMode: 'user' }}
+                            screenshotQuality={0.85}
+                            onUserMedia={() => {
+                                setCameraReady(true);
+                                if (!detectedEmployee?.id) {
+                                    setScanStatus('Scanning for an enrolled face...');
+                                }
+                            }}
+                            onUserMediaError={() => {
+                                setCameraReady(false);
+                                setScanStatus('Camera access failed. Please allow camera permission.');
+                            }}
+                            videoConstraints={{
+                                facingMode: 'user',
+                                width: { ideal: 960 },
+                                height: { ideal: 720 }
+                            }}
                             className="h-[40dvh] min-h-[320px] w-full object-cover sm:h-[46dvh] lg:h-[420px]"
                         />
                     </div>
@@ -407,7 +443,7 @@ export default function PublicAttendancePage() {
                     </div>
                 </section>
 
-                <section className="space-y-4 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-soft backdrop-blur-xl sm:space-y-6 sm:p-5 lg:rounded-[32px] lg:p-8">
+                <section className={`space-y-4 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-soft backdrop-blur-xl sm:space-y-6 sm:p-5 lg:rounded-[32px] lg:p-8 ${isInstalledApp ? 'hidden' : ''}`}>
                     <div>
                         <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Detected employee</div>
                         <div className="mt-3 rounded-3xl border border-white/10 bg-black/15 p-5">
