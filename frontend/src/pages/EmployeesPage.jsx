@@ -68,6 +68,24 @@ export default function EmployeesPage() {
         reset();
     }
 
+    async function removeEmployee(employee) {
+        const shouldDelete = window.confirm(`Delete ${employee.fullName}? This action cannot be undone.`);
+        if (!shouldDelete) {
+            return;
+        }
+
+        try {
+            await api.delete(`/employees/${employee.id}`);
+            setEmployees((current) => current.filter((entry) => Number(entry.id) !== Number(employee.id)));
+            if (Number(editingEmployeeId) === Number(employee.id)) {
+                cancelEdit();
+            }
+            toast.success(`${employee.fullName} deleted`);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Failed to delete employee');
+        }
+    }
+
     async function onSubmit(values) {
         try {
             const payload = {
@@ -163,6 +181,13 @@ export default function EmployeesPage() {
                                         <div className="text-sm text-ink-200">{employee.employeeCode}</div>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => removeEmployee(employee)}
+                                            className="rounded-full border border-red-400/40 px-3 py-1 text-xs uppercase tracking-[0.3em] text-red-100"
+                                        >
+                                            Delete
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => beginEdit(employee)}

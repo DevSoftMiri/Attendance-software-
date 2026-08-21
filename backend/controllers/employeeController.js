@@ -272,3 +272,22 @@ export const updateEmployee = asyncHandler(async (request, response) => {
 
     return response.json({ employee, user });
 });
+
+export const deleteEmployee = asyncHandler(async (request, response) => {
+    const employee = await models.Employee.findByPk(request.params.id);
+    if (!employee) {
+        return response.status(404).json({ message: 'Employee not found' });
+    }
+
+    const user = employee.userId
+        ? await models.User.findByPk(employee.userId)
+        : await models.User.findOne({ where: { employeeId: employee.id } });
+
+    if (user) {
+        await user.destroy();
+    }
+
+    await employee.destroy();
+
+    return response.json({ message: 'Employee deleted successfully' });
+});
