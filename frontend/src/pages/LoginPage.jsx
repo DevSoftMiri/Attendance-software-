@@ -27,8 +27,53 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,205,102,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(77,197,255,0.18),_transparent_30%),linear-gradient(180deg,_#0b1020_0%,_#111627_56%,_#090e1b_100%)] px-4 py-10 text-white">
-            <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-7xl overflow-hidden rounded-[32px] border border-white/10 bg-white/5 shadow-soft backdrop-blur-xl lg:grid-cols-[1.1fr_0.9fr]">
-                <section className="relative p-8 lg:p-12">
+            <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-7xl overflow-hidden rounded-[32px] border border-white/10 bg-white/5 shadow-soft backdrop-blur-xl lg:grid-cols-[0.9fr_1.1fr]">
+                <section className="flex items-start justify-center bg-black/20 p-4 sm:p-6 lg:order-2 lg:items-center lg:border-l lg:border-t-0 lg:p-12">
+                    <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-md rounded-[28px] border border-white/10 bg-[#0f1528]/90 p-6 shadow-soft sm:p-8">
+                        <div className="text-sm uppercase tracking-[0.35em] text-ink-300">Sign in</div>
+                        <h2 className="mt-3 text-3xl font-semibold text-white">Welcome back</h2>
+                        <p className="mt-2 text-sm text-ink-200">Use your portal credentials to enter the dashboard.</p>
+
+                        <label className="mt-8 block text-sm text-ink-200">
+                            Email
+                            <input
+                                {...register('email')}
+                                type="email"
+                                placeholder="jatin@gmail.com"
+                                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-ink-400 focus:border-white/30"
+                            />
+                        </label>
+
+                        <label className="mt-5 block text-sm text-ink-200">
+                            Password
+                            <input
+                                {...register('password')}
+                                type="password"
+                                placeholder="Enter your password"
+                                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-ink-400 focus:border-white/30"
+                            />
+                        </label>
+
+                        {error ? <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="mt-6 w-full rounded-2xl bg-white px-4 py-3 font-medium text-ink-900 transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                            {loading ? 'Signing in...' : 'Enter dashboard'}
+                        </button>
+
+                        <div className="mt-4 text-center text-sm text-ink-200">
+                            Need to mark attendance without login?{' '}
+                            <Link to="/public-attendance" className="font-medium text-white underline underline-offset-4">
+                                Open the public kiosk
+                            </Link>
+                        </div>
+                    </form>
+                </section>
+
+                <section className="relative hidden p-8 lg:order-1 lg:block lg:p-12">
                     <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_32%,transparent_68%,rgba(255,255,255,0.05))]" />
                     <div className="relative z-10">
                         <div className="inline-flex rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs uppercase tracking-[0.35em] text-ink-200">
@@ -57,55 +102,6 @@ export default function LoginPage() {
                             ))}
                         </div>
                     </div>
-                </section>
-
-                <section className="flex items-center justify-center border-t border-white/10 bg-black/20 p-8 lg:border-l lg:border-t-0 lg:p-12">
-                    <form onSubmit={handleSubmit(onSubmit)} className="w-full max-w-md rounded-[28px] border border-white/10 bg-[#0f1528]/90 p-8 shadow-soft">
-                        <div className="text-sm uppercase tracking-[0.35em] text-ink-300">Sign in</div>
-                        <h2 className="mt-3 text-3xl font-semibold text-white">Welcome back</h2>
-                        <p className="mt-2 text-sm text-ink-200">Use your portal credentials or the local demo account.</p>
-
-                        <label className="mt-8 block text-sm text-ink-200">
-                            Email
-                            <input
-                                {...register('email')}
-                                type="email"
-                                placeholder="admin@local.dev"
-                                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-ink-400 focus:border-white/30"
-                            />
-                        </label>
-
-                        <label className="mt-5 block text-sm text-ink-200">
-                            Password
-                            <input
-                                {...register('password')}
-                                type="password"
-                                placeholder="Admin@123"
-                                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-ink-400 focus:border-white/30"
-                            />
-                        </label>
-
-                        {error ? <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="mt-6 w-full rounded-2xl bg-white px-4 py-3 font-medium text-ink-900 transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                            {loading ? 'Signing in...' : 'Enter dashboard'}
-                        </button>
-
-                        <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-ink-200">
-                            Demo account: <span className="font-medium text-white">admin@local.dev</span> / <span className="font-medium text-white">Admin@123</span>
-                        </div>
-
-                        <div className="mt-4 text-center text-sm text-ink-200">
-                            Need to mark attendance without login?{' '}
-                            <Link to="/public-attendance" className="font-medium text-white underline underline-offset-4">
-                                Open the public kiosk
-                            </Link>
-                        </div>
-                    </form>
                 </section>
             </div>
         </div>
