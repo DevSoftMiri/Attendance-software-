@@ -1,0 +1,25 @@
+{
+  "name": "Attendance Kiosk",
+  "short_name": "Attendance",
+  "description": "Installable attendance kiosk for face-based check in and check out.",
+  "start_url": "/public-attendance",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090e1b",
+  "theme_color": "#090e1b",
+  "icons": [
+    {
+      "src": "/icons/icon-attendance.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
