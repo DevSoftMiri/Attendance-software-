@@ -4,12 +4,16 @@ import { config } from '../config/env.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { models } from '../models/store.js';
 
+function resolveRoleCode(user) {
+    return user?.roleCode || user?.employee?.roleCode || user?.Employee?.roleCode || 'STAFF';
+}
+
 function createToken(user) {
     return jwt.sign(
         {
             userId: user.id,
-            employeeId: user.employeeId || null,
-            roleCode: user.roleCode || 'STAFF',
+            employeeId: user.employeeId || user?.employee?.id || user?.Employee?.id || null,
+            roleCode: resolveRoleCode(user),
             email: user.email
         },
         config.jwtSecret,
@@ -31,7 +35,10 @@ function authCookieOptions() {
 export const login = asyncHandler(async (request, response) => {
     const { email, password } = request.body;
 
-    const user = await models.User?.findOne({ where: { email } });
+    const user = await models.User?.findOne({
+        where: { email },
+        include: models.Employee ? [{ model: models.Employee }] : []
+    });
     if (user) {
         const passwordMatches = await bcrypt.compare(password, user.passwordHash);
         if (!passwordMatches) {
@@ -40,6 +47,7 @@ export const login = asyncHandler(async (request, response) => {
 
         const token = createToken(user);
         response.cookie('token', token, authCookieOptions());
+        const roleCode = resolveRoleCode(user);
 
         return response.json({
             token,
@@ -47,7 +55,7 @@ export const login = asyncHandler(async (request, response) => {
                 id: user.id,
                 employeeId: user.employeeId,
                 email: user.email,
-                roleCode: user.roleCode || 'STAFF'
+                roleCode
             }
         });
     }

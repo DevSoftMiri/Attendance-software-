@@ -45,6 +45,18 @@ npm install
 npm run dev
 ```
 
+To create or repair the first production-style super admin user in the connected database:
+
+```bash
+cd backend
+npm run seed:super-admin
+```
+
+This seeds:
+
+- email: `jatin@gmail.com`
+- password: `Bigubuisness`
+
 ### Frontend
 
 ```bash
