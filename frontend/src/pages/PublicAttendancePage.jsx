@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { captureCurrentLocation, collectDeviceInfo } from '../utils/attendance';
 import { formatDate, formatDateTime } from '../utils/date';
 
 const INSTALL_OVERLAY_KEY = 'attendance-pwa-install-overlay-dismissed';
+const FIRST_SCAN_DELAY_MS = 350;
+const SCAN_INTERVAL_MS = 4000;
 
 function detectInstallContext() {
     const userAgent = navigator.userAgent || '';
@@ -24,6 +27,7 @@ function detectInstallContext() {
 export default function PublicAttendancePage() {
     const webcamRef = useRef(null);
     const deferredInstallPromptRef = useRef(null);
+    const navigate = useNavigate();
     const installContext = detectInstallContext();
     const [location, setLocation] = useState(null);
     const [detectedEmployee, setDetectedEmployee] = useState(null);
@@ -99,6 +103,7 @@ export default function PublicAttendancePage() {
     useEffect(() => {
         let active = true;
         let intervalId;
+        let firstScanTimeoutId;
 
         async function scanFace() {
             if (!active || !webcamRef.current || !cameraReady || !scanning || detectedEmployee?.id) {
@@ -112,7 +117,7 @@ export default function PublicAttendancePage() {
 
             const screenshot = webcamRef.current.getScreenshot();
             if (!screenshot) {
-                setScanStatus('Camera is warming up...');
+                setScanStatus('Starting camera...');
                 return;
             }
 
@@ -163,11 +168,19 @@ export default function PublicAttendancePage() {
             }
         }
 
-        scanFace();
-        intervalId = setInterval(scanFace, 4000);
+        if (cameraReady && scanning && !detectedEmployee?.id) {
+            firstScanTimeoutId = setTimeout(() => {
+                scanFace();
+            }, FIRST_SCAN_DELAY_MS);
+        }
+
+        intervalId = setInterval(scanFace, SCAN_INTERVAL_MS);
 
         return () => {
             active = false;
+            if (firstScanTimeoutId) {
+                clearTimeout(firstScanTimeoutId);
+            }
             if (intervalId) {
                 clearInterval(intervalId);
             }
@@ -357,7 +370,7 @@ export default function PublicAttendancePage() {
                             audio={false}
                             ref={webcamRef}
                             screenshotFormat="image/jpeg"
-                            screenshotQuality={0.85}
+                            screenshotQuality={0.72}
                             onUserMedia={() => {
                                 setCameraReady(true);
                                 if (!detectedEmployee?.id) {
@@ -370,8 +383,8 @@ export default function PublicAttendancePage() {
                             }}
                             videoConstraints={{
                                 facingMode: 'user',
-                                width: { ideal: 960 },
-                                height: { ideal: 720 }
+                                width: { ideal: 640 },
+                                height: { ideal: 480 }
                             }}
                             className="h-[40dvh] min-h-[320px] w-full object-cover sm:h-[46dvh] lg:h-[420px]"
                         />
@@ -406,6 +419,16 @@ export default function PublicAttendancePage() {
                             className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-3.5 text-sm font-medium text-white"
                         >
                             {detectedEmployee?.id ? 'Scan New Face' : scanning ? 'Stop Scan' : 'Start Scan'}
+                        </button>
+                    </div>
+
+                    <div className="mt-3 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/login')}
+                            className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white"
+                        >
+                            Login
                         </button>
                     </div>
 
