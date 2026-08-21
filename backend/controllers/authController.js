@@ -17,6 +17,17 @@ function createToken(user) {
     );
 }
 
+function authCookieOptions() {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    return {
+        httpOnly: true,
+        sameSite: isProduction ? 'none' : 'lax',
+        secure: isProduction,
+        maxAge: 24 * 60 * 60 * 1000
+    };
+}
+
 export const login = asyncHandler(async (request, response) => {
     const { email, password } = request.body;
 
@@ -28,12 +39,7 @@ export const login = asyncHandler(async (request, response) => {
         }
 
         const token = createToken(user);
-        response.cookie('token', token, {
-            httpOnly: true,
-            sameSite: 'lax',
-            secure: process.env.NODE_ENV === 'production',
-            maxAge: 24 * 60 * 60 * 1000
-        });
+        response.cookie('token', token, authCookieOptions());
 
         return response.json({
             token,
@@ -55,12 +61,7 @@ export const login = asyncHandler(async (request, response) => {
         };
 
         const token = createToken(demoUser);
-        response.cookie('token', token, {
-            httpOnly: true,
-            sameSite: 'lax',
-            secure: false,
-            maxAge: 24 * 60 * 60 * 1000
-        });
+        response.cookie('token', token, authCookieOptions());
 
         return response.json({ token, user: demoUser, demo: true });
     }
@@ -69,7 +70,7 @@ export const login = asyncHandler(async (request, response) => {
 });
 
 export const logout = asyncHandler(async (request, response) => {
-    response.clearCookie('token');
+    response.clearCookie('token', authCookieOptions());
     return response.json({ message: 'Logged out successfully' });
 });
 

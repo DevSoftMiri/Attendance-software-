@@ -4,6 +4,11 @@ import toast from 'react-hot-toast';
 import api from '../services/api';
 import { formatDateInput, parseDateInput } from '../utils/date';
 
+function formatDatePickerValue(value) {
+    const parsed = parseDateInput(value);
+    return parsed || '';
+}
+
 export default function EmployeesPage() {
     const { register, handleSubmit, reset } = useForm();
     const [employees, setEmployees] = useState([]);
@@ -44,7 +49,7 @@ export default function EmployeesPage() {
             fullName: employee.fullName || '',
             email: employee.email || '',
             phone: employee.phone || '',
-            joiningDate: formatDateInput(employee.joiningDate),
+            joiningDate: formatDatePickerValue(employee.joiningDate),
             loginTime: employee.loginTime || '',
             jobTitleCode: employee.roleCode || '',
             roleCode: employee.roleCode || '',
@@ -113,8 +118,14 @@ export default function EmployeesPage() {
                     <input {...register('fullName')} placeholder="Full name" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400 sm:col-span-2" />
                     <input {...register('email')} type="email" placeholder="Email" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <input {...register('phone')} placeholder="Phone" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                    <input {...register('joiningDate')} type="text" placeholder="DD/MM/YYYY" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                    <input {...register('loginTime')} type="time" placeholder="Login time" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                    <label className="grid gap-2">
+                        <span className="text-xs uppercase tracking-[0.28em] text-ink-300">Joining date</span>
+                        <input {...register('joiningDate')} type="date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />
+                    </label>
+                    <label className="grid gap-2">
+                        <span className="text-xs uppercase tracking-[0.28em] text-ink-300">Office reporting time</span>
+                        <input {...register('loginTime')} type="time" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />
+                    </label>
                     <input {...register('jobTitleCode')} placeholder="Job title code" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <input {...register('roleCode')} placeholder="Role code" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <select {...register('branchId')} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
@@ -164,7 +175,8 @@ export default function EmployeesPage() {
                                 </div>
                                 <div className="mt-3 grid gap-2 text-sm text-ink-200 sm:grid-cols-2">
                                     <div>Email: {employee.email}</div>
-                                    <div>Login time: {employee.loginTime || 'Not set'}</div>
+                                    <div>Joining date: {formatDateInput(employee.joiningDate) || 'Not set'}</div>
+                                    <div>Office reporting time: {employee.loginTime || 'Not set'}</div>
                                     <div>Role: {employee.roleCode}</div>
                                     <div>Branch: {branches.find((branch) => Number(branch.id) === Number(employee.branchId))?.name || 'Not assigned'}</div>
                                     <div>Shift: {shifts.find((shift) => Number(shift.id) === Number(employee.shiftId))?.name || 'Not assigned'}</div>
