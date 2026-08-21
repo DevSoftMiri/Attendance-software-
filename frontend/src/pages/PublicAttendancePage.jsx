@@ -5,15 +5,33 @@ import api from '../services/api';
 import { captureCurrentLocation, collectDeviceInfo } from '../utils/attendance';
 import { formatDate, formatDateTime } from '../utils/date';
 
+const INSTALL_OVERLAY_KEY = 'attendance-pwa-install-overlay-dismissed';
+
+function detectInstallContext() {
+    const userAgent = navigator.userAgent || '';
+    const isIos = /iPad|iPhone|iPod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/i.test(userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    return {
+        isIos,
+        isAndroid,
+        isStandalone,
+        isChromiumMobile: isAndroid && /Chrome|CriOS|EdgA|SamsungBrowser/i.test(userAgent)
+    };
+}
+
 export default function PublicAttendancePage() {
     const webcamRef = useRef(null);
     const deferredInstallPromptRef = useRef(null);
+    const installContext = detectInstallContext();
     const [location, setLocation] = useState(null);
     const [detectedEmployee, setDetectedEmployee] = useState(null);
     const [policy, setPolicy] = useState(null);
     const [todaySummary, setTodaySummary] = useState(null);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
     const [installReady, setInstallReady] = useState(false);
+    const [showInstallOverlay, setShowInstallOverlay] = useState(false);
     const [attendanceState, setAttendanceState] = useState({
         hasCheckedIn: false,
         hasCheckedOut: false,
@@ -53,16 +71,29 @@ export default function PublicAttendancePage() {
             setInstallReady(true);
         }
 
+        function handleAppInstalled() {
+            setInstallReady(false);
+            setShowInstallOverlay(false);
+            localStorage.setItem(INSTALL_OVERLAY_KEY, 'true');
+        }
+
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('appinstalled', handleAppInstalled);
+
+        const installOverlayDismissed = localStorage.getItem(INSTALL_OVERLAY_KEY) === 'true';
+        if (!installContext.isStandalone && !installOverlayDismissed) {
+            setShowInstallOverlay(true);
+        }
 
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('appinstalled', handleAppInstalled);
         };
-    }, []);
+    }, [installContext.isStandalone]);
 
     useEffect(() => {
         let active = true;
@@ -144,14 +175,27 @@ export default function PublicAttendancePage() {
 
     async function installApp() {
         if (!deferredInstallPromptRef.current) {
-            toast('Use your browser menu to install this app on this device.');
+            if (installContext.isIos) {
+                toast('On iPhone, tap Share and choose Add to Home Screen.');
+            } else {
+                toast('Use your browser menu to install this app on this device.');
+            }
             return;
         }
 
         deferredInstallPromptRef.current.prompt();
-        await deferredInstallPromptRef.current.userChoice;
+        const choice = await deferredInstallPromptRef.current.userChoice;
         deferredInstallPromptRef.current = null;
         setInstallReady(false);
+        if (choice?.outcome === 'accepted') {
+            setShowInstallOverlay(false);
+            localStorage.setItem(INSTALL_OVERLAY_KEY, 'true');
+        }
+    }
+
+    function dismissInstallOverlay() {
+        setShowInstallOverlay(false);
+        localStorage.setItem(INSTALL_OVERLAY_KEY, 'true');
     }
 
     async function submitAttendance(actionType) {
@@ -215,9 +259,49 @@ export default function PublicAttendancePage() {
 
     const canCheckIn = Boolean(detectedEmployee?.id) && !attendanceState.hasCheckedIn && !loadingAction;
     const canCheckOut = Boolean(detectedEmployee?.id) && attendanceState.hasCheckedIn && !attendanceState.hasCheckedOut && !loadingAction;
+    const installHeadline = installContext.isIos ? 'Add this kiosk to your Home Screen' : 'Install this kiosk for one-tap attendance';
+    const installBody = installContext.isIos
+        ? 'Open the Share menu in Safari, tap Add to Home Screen, and launch the kiosk like a real app.'
+        : installContext.isChromiumMobile
+            ? 'Install the attendance kiosk for a full-screen, app-like check-in flow on this device.'
+            : 'Use your browser install option to pin this kiosk for faster daily attendance.';
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,205,102,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(77,197,255,0.18),_transparent_30%),linear-gradient(180deg,_#0b1020_0%,_#111627_56%,_#090e1b_100%)] px-3 py-3 text-white sm:px-4 sm:py-6 lg:py-8">
+            {showInstallOverlay ? (
+                <div className="fixed inset-0 z-50 flex items-end bg-[#050811]/80 p-3 backdrop-blur-md sm:items-center sm:justify-center sm:p-6">
+                    <div className="w-full max-w-xl overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(145deg,_rgba(255,209,102,0.18),_rgba(15,23,42,0.96)_28%,_rgba(11,16,32,0.98)_100%)] shadow-2xl">
+                        <div className="p-5 sm:p-7">
+                            <div className="text-xs uppercase tracking-[0.4em] text-[#ffd166]">Install kiosk</div>
+                            <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">{installHeadline}</h2>
+                            <p className="mt-3 text-sm leading-6 text-ink-200">{installBody}</p>
+
+                            <div className="mt-5 grid gap-3 rounded-[24px] border border-white/10 bg-white/5 p-4 text-sm text-ink-100">
+                                <div>{installContext.isIos ? '1. Tap the Share icon in Safari.' : '1. Keep this page open in Chrome or another installable browser.'}</div>
+                                <div>{installContext.isIos ? '2. Choose Add to Home Screen.' : '2. Tap Install App to trigger the browser install prompt.'}</div>
+                                <div>{installContext.isIos ? '3. Launch the new app icon from the Home Screen for kiosk mode.' : '3. Open the installed app and use it full-screen for daily check-ins.'}</div>
+                            </div>
+
+                            <div className="mt-6 flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    onClick={installApp}
+                                    className="rounded-full bg-white px-5 py-3 text-sm font-medium text-ink-900"
+                                >
+                                    {installContext.isIos ? 'Show iPhone Steps' : installReady ? 'Install App' : 'Install Guide'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={dismissInstallOverlay}
+                                    className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white"
+                                >
+                                    Continue in Browser
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             <div className="mx-auto grid min-h-[100dvh] max-w-7xl gap-4 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.05fr_0.95fr] lg:gap-6">
                 <section className="flex min-h-[100dvh] flex-col rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-soft backdrop-blur-xl sm:p-5 lg:min-h-0 lg:rounded-[32px] lg:p-8">
                     <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Public attendance kiosk</div>
@@ -234,13 +318,16 @@ export default function PublicAttendancePage() {
                                     ? 'Install this on your kiosk phone, tablet, or desktop for a full-screen attendance experience.'
                                     : 'The app shell stays available offline, but attendance still needs internet because face verification and policy checks run on the server.'}
                             </p>
+                            <p className="mt-2 text-xs uppercase tracking-[0.28em] text-[#ffd166]">
+                                {installContext.isIos ? 'iPhone: Share > Add to Home Screen' : installReady ? 'Install prompt available on this device' : 'Use browser install menu if prompt is unavailable'}
+                            </p>
                         </div>
                         <button
                             type="button"
                             onClick={installApp}
                             className="rounded-full border border-[#ffd166]/40 bg-[#ffd166]/10 px-5 py-3 text-sm font-medium text-[#ffe4a3]"
                         >
-                            {installReady ? 'Install App' : 'How to Install'}
+                            {installContext.isIos ? 'iPhone Install Steps' : installReady ? 'Install App' : 'How to Install'}
                         </button>
                     </div>
 
