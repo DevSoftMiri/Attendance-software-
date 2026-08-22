@@ -16,6 +16,15 @@ app.add_middleware(
 app.include_router(face_router)
 
 
+def health_payload():
+    return {'status': 'ok', 'service': 'face-service'}
+
+
+@app.get('/')
+def root_health_check():
+    return health_payload()
+
+
 @app.get('/health')
 def health_check():
-    return {'status': 'ok', 'service': 'face-service'}
+    return health_payload()

@@ -14,6 +14,8 @@ export function createApp() {
         .map((origin) => origin.trim())
         .filter(Boolean);
 
+    const healthPayload = { status: 'ok', service: 'attendance-backend' };
+
     app.use(helmet());
     app.use(
         cors({
@@ -26,6 +28,9 @@ export function createApp() {
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
     app.use(cookieParser());
 
+    app.get('/health', (request, response) => {
+        response.json(healthPayload);
+    });
     app.use('/api', routes);
     app.use(notFoundHandler);
     app.use(errorHandler);
