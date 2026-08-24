@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import os
 from datetime import datetime, UTC
@@ -70,9 +71,49 @@ def _insightface_det_size() -> tuple[int, int]:
     return (edge, edge)
 
 
+def _max_processing_edge() -> int:
+    edge = _env_int('FACE_IMAGE_MAX_EDGE', 640)
+    return max(160, min(edge, 1280))
+
+
 def _numpy_image(path: Path) -> np.ndarray:
     image = np.array(load_image(path))
+    if image.ndim >= 2:
+        height, width = image.shape[:2]
+        longest_edge = max(height, width)
+        target_edge = _max_processing_edge()
+        if cv2 is not None and longest_edge > target_edge:
+            scale = target_edge / float(longest_edge)
+            resized_width = max(1, int(width * scale))
+            resized_height = max(1, int(height * scale))
+            image = cv2.resize(image, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
     return image[:, :, ::-1] if image.shape[-1] == 3 else image
+
+
+def _cleanup_memory(*objects: object) -> None:
+    for item in objects:
+        del item
+    gc.collect()
+
+
+def _grayscale_for_fallback(image_path: Path) -> Any:
+    if cv2 is None:
+        return None
+
+    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        return None
+
+    height, width = image.shape[:2]
+    longest_edge = max(height, width)
+    target_edge = _max_processing_edge()
+    if longest_edge > target_edge:
+        scale = target_edge / float(longest_edge)
+        resized_width = max(1, int(width * scale))
+        resized_height = max(1, int(height * scale))
+        image = cv2.resize(image, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
+
+    return image
 
 
 def _employee_directory(employee_id: str) -> Path:
@@ -141,17 +182,22 @@ def _extract_insightface_embedding(image_path: Path) -> dict[str, Any] | None:
         return None
 
     image = _numpy_image(image_path)
-    faces = app.get(image)
+    try:
+        faces = app.get(image)
+    finally:
+        _cleanup_memory(image)
     if not faces:
         return None
 
     best_face = max(faces, key=lambda face: float(getattr(face, 'det_score', 0.0)))
     embedding = np.asarray(best_face.embedding, dtype=np.float32)
-    return {
+    result = {
         'embedding': embedding.tolist(),
         'detScore': round(float(getattr(best_face, 'det_score', 0.0)), 4),
         'bbox': [float(value) for value in getattr(best_face, 'bbox', [])],
     }
+    _cleanup_memory(embedding, faces)
+    return result
 
 
 def _write_embedding_cache(employee_id: str, entries: list[dict[str, Any]]) -> None:
@@ -438,8 +484,8 @@ def _fallback_verification(reference_path: Path, live_path: Path, threshold: flo
             'metadata': {'referenceHash': reference_hash[:12], 'liveHash': live_hash[:12]}
         }
 
-    reference = cv2.imread(str(reference_path), cv2.IMREAD_GRAYSCALE)
-    live = cv2.imread(str(live_path), cv2.IMREAD_GRAYSCALE)
+    reference = _grayscale_for_fallback(reference_path)
+    live = _grayscale_for_fallback(live_path)
     if reference is None or live is None:
         return {
             'employeeId': reference_path.parent.name,
@@ -461,7 +507,7 @@ def _fallback_verification(reference_path: Path, live_path: Path, threshold: flo
     confidence = max(0.0, min(1.0, (similarity + 1.0) / 2.0))
     distance = 1.0 - confidence
     quality = assess_quality(live_path)
-    return {
+    result = {
         'employeeId': reference_path.parent.name,
         'verified': distance <= threshold and quality['passed'],
         'distance': round(distance, 4),
@@ -472,6 +518,8 @@ def _fallback_verification(reference_path: Path, live_path: Path, threshold: flo
         'detail': 'Fallback similarity comparison completed.',
         'metadata': quality
     }
+    _cleanup_memory(reference, live, reference_hist, live_hist)
+    return result
 
 
 def _fallback_identity(reference_path: Path, live_path: Path, employee_id: str, threshold: float) -> dict[str, Any]:
@@ -493,8 +541,8 @@ def _fallback_identity(reference_path: Path, live_path: Path, employee_id: str, 
             'metadata': {'referenceHash': reference_hash[:12], 'liveHash': live_hash[:12]}
         }
 
-    reference = cv2.imread(str(reference_path), cv2.IMREAD_GRAYSCALE)
-    live = cv2.imread(str(live_path), cv2.IMREAD_GRAYSCALE)
+    reference = _grayscale_for_fallback(reference_path)
+    live = _grayscale_for_fallback(live_path)
     if reference is None or live is None:
         return {
             'employeeId': employee_id,
@@ -516,7 +564,7 @@ def _fallback_identity(reference_path: Path, live_path: Path, employee_id: str, 
     confidence = max(0.0, min(1.0, (similarity + 1.0) / 2.0))
     distance = 1.0 - confidence
     quality = assess_quality(live_path)
-    return {
+    result = {
         'employeeId': employee_id,
         'verified': distance <= threshold and quality['passed'],
         'distance': round(distance, 4),
@@ -527,6 +575,8 @@ def _fallback_identity(reference_path: Path, live_path: Path, employee_id: str, 
         'detail': 'Fallback identity comparison completed.',
         'metadata': quality
     }
+    _cleanup_memory(reference, live, reference_hist, live_hist)
+    return result
 
 
 def check_quality(payload: FaceQualityRequest) -> dict[str, Any]:
