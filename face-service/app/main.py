@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -30,6 +31,16 @@ def root_health_check():
     return health_payload()
 
 
+@app.head('/')
+def root_head_health_check():
+    return Response(status_code=200)
+
+
 @app.get('/health')
 def health_check():
     return health_payload()
+
+
+@app.head('/health')
+def health_head_check():
+    return Response(status_code=200)
