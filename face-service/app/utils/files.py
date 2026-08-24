@@ -37,8 +37,12 @@ def _supabase_bucket_name() -> str:
     return os.getenv('SUPABASE_BUCKET', 'face-profiles').strip() or 'face-profiles'
 
 
+def supabase_package_available() -> bool:
+    return create_client is not None
+
+
 def use_supabase_storage() -> bool:
-    return bool(_supabase_url() and _supabase_key())
+    return bool(_supabase_url() and _supabase_key() and supabase_package_available())
 
 
 def _is_transient_employee(employee_id: str) -> bool:
