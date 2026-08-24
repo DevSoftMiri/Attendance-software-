@@ -50,6 +50,26 @@ def _env_flag(name: str, default: bool) -> bool:
     return raw_value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value.strip())
+    except ValueError:
+        return default
+
+
+def _insightface_model_name() -> str:
+    return os.getenv('INSIGHTFACE_MODEL_NAME', 'buffalo_l').strip() or 'buffalo_l'
+
+
+def _insightface_det_size() -> tuple[int, int]:
+    edge = _env_int('INSIGHTFACE_DET_SIZE', 640)
+    edge = max(160, min(edge, 640))
+    return (edge, edge)
+
+
 def _numpy_image(path: Path) -> np.ndarray:
     image = np.array(load_image(path))
     return image[:, :, ::-1] if image.shape[-1] == 3 else image
@@ -73,8 +93,8 @@ def _load_face_app() -> FaceAnalysis | None:
         return None
 
     try:
-        app = FaceAnalysis(name='buffalo_l', providers=[DEFAULT_PROVIDER])
-        app.prepare(ctx_id=0, det_size=(640, 640))
+        app = FaceAnalysis(name=_insightface_model_name(), providers=[DEFAULT_PROVIDER])
+        app.prepare(ctx_id=0, det_size=_insightface_det_size())
         _face_app = app
         return _face_app
     except Exception as error:  # pragma: no cover - environment specific

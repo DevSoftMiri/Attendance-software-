@@ -1,0 +1,7 @@
+.env
+.venv
+registered_faces
+__pycache__
+*.pyc
+*.pyo
+*.pyd
