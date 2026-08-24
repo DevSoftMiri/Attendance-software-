@@ -8,7 +8,7 @@ import { formatDate, formatDateTime } from '../utils/date';
 
 const INSTALL_OVERLAY_KEY = 'attendance-pwa-install-overlay-dismissed';
 const FIRST_SCAN_DELAY_MS = 350;
-const SCAN_INTERVAL_MS = 4000;
+const SCAN_INTERVAL_MS = 2000;
 
 function detectInstallContext() {
     const userAgent = navigator.userAgent || '';
@@ -26,6 +26,7 @@ function detectInstallContext() {
 
 export default function PublicAttendancePage() {
     const webcamRef = useRef(null);
+    const scanInFlightRef = useRef(false);
     const deferredInstallPromptRef = useRef(null);
     const navigate = useNavigate();
     const installContext = detectInstallContext();
@@ -106,13 +107,8 @@ export default function PublicAttendancePage() {
         let firstScanTimeoutId;
 
         async function scanFace() {
-            if (!active || !webcamRef.current || !cameraReady || !scanning || detectedEmployee?.id) {
+            if (!active || !webcamRef.current || !cameraReady || !scanning || detectedEmployee?.id || scanInFlightRef.current) {
                 return;
-            }
-
-            const currentLocation = await captureCurrentLocation();
-            if (active) {
-                setLocation(currentLocation);
             }
 
             const screenshot = webcamRef.current.getScreenshot();
@@ -122,10 +118,10 @@ export default function PublicAttendancePage() {
             }
 
             try {
+                scanInFlightRef.current = true;
                 setScanStatus('Scanning face...');
                 const { data } = await api.post('/public-attendance/identify', {
                     liveImage: screenshot,
-                    geoLocation: currentLocation,
                     requestMeta: {
                         deviceTimestamp: new Date().toISOString(),
                         deviceInformation: collectDeviceInfo(),
@@ -151,6 +147,11 @@ export default function PublicAttendancePage() {
                 });
                 setScanStatus(`Face detected: ${data.employee.fullName}`);
                 setScanning(false);
+                captureCurrentLocation().then((currentLocation) => {
+                    if (active) {
+                        setLocation(currentLocation);
+                    }
+                });
             } catch (error) {
                 if (!active) {
                     return;
@@ -165,6 +166,8 @@ export default function PublicAttendancePage() {
                     actionMode: 'CHECK_IN'
                 });
                 setScanStatus(error?.response?.data?.message || 'Scanning for an enrolled face...');
+            } finally {
+                scanInFlightRef.current = false;
             }
         }
 
