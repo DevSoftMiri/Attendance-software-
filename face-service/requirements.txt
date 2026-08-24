@@ -10,3 +10,4 @@ supabase>=2.8.1
 python-dotenv>=1.0.1
 insightface>=0.7.3
 onnxruntime>=1.19.2
+psutil>=6.1.1

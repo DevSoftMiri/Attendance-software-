@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import psutil
 
 from ..models.schemas import FaceEnrolRequest, FaceIdentifyRequest, FaceQualityRequest, FaceVerifyRequest
 from ..utils.files import (
@@ -59,6 +60,19 @@ def _env_int(name: str, default: int) -> int:
         return int(raw_value.strip())
     except ValueError:
         return default
+
+
+def _memory_logging_enabled() -> bool:
+    return _env_flag('LOG_MEMORY_USAGE', False)
+
+
+def log_memory(label: str = '') -> None:
+    if not _memory_logging_enabled():
+        return
+
+    process = psutil.Process(os.getpid())
+    mb_used = process.memory_info().rss / (1024 * 1024)
+    print(f'[{label}] Memory Usage: {mb_used:.2f} MB')
 
 
 def _insightface_model_name() -> str:
@@ -134,8 +148,10 @@ def _load_face_app() -> FaceAnalysis | None:
         return None
 
     try:
+        log_memory('Before Model Load')
         app = FaceAnalysis(name=_insightface_model_name(), providers=[DEFAULT_PROVIDER])
         app.prepare(ctx_id=0, det_size=_insightface_det_size())
+        log_memory('After Model Load')
         _face_app = app
         return _face_app
     except Exception as error:  # pragma: no cover - environment specific
@@ -183,9 +199,12 @@ def _extract_insightface_embedding(image_path: Path) -> dict[str, Any] | None:
 
     image = _numpy_image(image_path)
     try:
+        log_memory('Before Inference')
         faces = app.get(image)
+        log_memory('After Inference')
     finally:
         _cleanup_memory(image)
+        log_memory('After Image Cleanup')
     if not faces:
         return None
 
@@ -197,6 +216,7 @@ def _extract_insightface_embedding(image_path: Path) -> dict[str, Any] | None:
         'bbox': [float(value) for value in getattr(best_face, 'bbox', [])],
     }
     _cleanup_memory(embedding, faces)
+    log_memory('After Embedding Cleanup')
     return result
 
 
