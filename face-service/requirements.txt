@@ -7,3 +7,5 @@ numpy>=2.2.1
 opencv-python-headless>=4.10.0.84
 aiofiles>=24.1.0
 supabase>=2.8.1
+insightface>=0.7.3
+onnxruntime>=1.19.2

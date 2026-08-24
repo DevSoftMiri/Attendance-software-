@@ -93,10 +93,6 @@ async function identifyEmployeeFromFace(liveImage) {
         modelName: 'Facenet512'
     });
 
-    if (!faceMatch?.verified || !faceMatch?.employeeId) {
-        return null;
-    }
-
     return faceMatch;
 }
 
@@ -125,13 +121,13 @@ async function markAttendance(request, response, actionType) {
     const { liveImage, geoLocation = {}, requestMeta = {} } = request.body;
     const faceMatch = await identifyEmployeeFromFace(liveImage);
 
-    if (!faceMatch) {
-        return response.status(422).json({ message: 'Face could not be identified' });
+    if (!faceMatch?.verified || !faceMatch?.employeeId) {
+        return response.status(422).json({ message: faceMatch?.detail || 'Face could not be identified' });
     }
 
     const employee = await resolveEmployeeFromFaceMatch(faceMatch);
     if (!employee) {
-        return response.status(404).json({ message: 'Employee profile not found' });
+        return response.status(422).json({ message: 'Matched face profile does not map to an active employee' });
     }
 
     const branch = await resolveBranch(employee);
@@ -294,13 +290,13 @@ export const identify = asyncHandler(async (request, response) => {
     const { liveImage } = request.body;
     const faceMatch = await identifyEmployeeFromFace(liveImage);
 
-    if (!faceMatch) {
-        return response.status(422).json({ message: 'Face could not be identified' });
+    if (!faceMatch?.verified || !faceMatch?.employeeId) {
+        return response.status(422).json({ message: faceMatch?.detail || 'Face could not be identified' });
     }
 
     const employee = await resolveEmployeeFromFaceMatch(faceMatch);
     if (!employee) {
-        return response.status(404).json({ message: 'Employee profile not found' });
+        return response.status(422).json({ message: 'Matched face profile does not map to an active employee' });
     }
 
     const branch = await resolveBranch(employee);

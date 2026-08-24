@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,13 @@ _face_app: FaceAnalysis | None = None
 _face_app_initialization_error: str | None = None
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def _numpy_image(path: Path) -> np.ndarray:
     image = np.array(load_image(path))
     return image[:, :, ::-1] if image.shape[-1] == 3 else image
@@ -72,6 +80,16 @@ def _load_face_app() -> FaceAnalysis | None:
     except Exception as error:  # pragma: no cover - environment specific
         _face_app_initialization_error = str(error)
         return None
+
+
+def _insightface_status_detail() -> str:
+    if FaceAnalysis is None:
+        return 'InsightFace is not installed in the face service environment.'
+
+    if _face_app_initialization_error:
+        return f'InsightFace failed to initialize: {_face_app_initialization_error}'
+
+    return 'InsightFace is unavailable.'
 
 
 def _cosine_distance(left: np.ndarray, right: np.ndarray) -> float:
@@ -311,8 +329,33 @@ def identify_face(payload: FaceIdentifyRequest) -> dict[str, Any]:
                     }
                 }
 
-        if best_match['employeeId'] is not None:
+        if best_match['employeeId'] is not None and best_match['verified']:
             return best_match
+
+        if best_match['employeeId'] is not None:
+            return {
+                **best_match,
+                'employeeId': None,
+                'verified': False,
+                'detail': 'No enrolled face matched within the identification threshold.'
+            }
+
+    allow_fallback_identification = _env_flag('ALLOW_FALLBACK_IDENTIFICATION', False)
+    if not allow_fallback_identification:
+        return {
+            'employeeId': None,
+            'verified': False,
+            'distance': None,
+            'threshold': payload.threshold,
+            'confidence': 0.0,
+            'antiSpoofingPassed': False,
+            'mode': 'fallback-disabled',
+            'detail': (
+                'Public face identification requires InsightFace. '
+                f'{_insightface_status_detail()}'
+            ),
+            'metadata': {}
+        }
 
     best_match = {
         'employeeId': None,
@@ -340,7 +383,20 @@ def identify_face(payload: FaceIdentifyRequest) -> dict[str, Any]:
         if candidate['verified'] and candidate['distance'] <= best_match['distance']:
             best_match = candidate
 
-    return best_match
+    if best_match['verified']:
+        return best_match
+
+    return {
+        'employeeId': None,
+        'verified': False,
+        'distance': best_match['distance'],
+        'threshold': payload.threshold,
+        'confidence': best_match['confidence'],
+        'antiSpoofingPassed': best_match['antiSpoofingPassed'],
+        'mode': best_match['mode'],
+        'detail': 'No enrolled face matched within the fallback identification threshold.',
+        'metadata': best_match['metadata']
+    }
 
 
 def _fallback_verification(reference_path: Path, live_path: Path, threshold: float) -> dict[str, Any]:
