@@ -39,3 +39,18 @@ export function evaluateAttendanceWindow({ shift, loginTime, checkInAt, checkOut
 
     return response;
 }
+
+export function evaluateAttendanceWindowWithExpectations({ checkInAt, checkOutAt, expectedCheckInTime, expectedCheckOutTime }) {
+    return {
+        lateMinutes: !checkInAt || !expectedCheckInTime
+            ? 0
+            : Math.max(0, Math.round((new Date(checkInAt).getTime() - new Date(expectedCheckInTime).getTime()) / 60000)),
+        earlyLogoutMinutes: !checkOutAt || !expectedCheckOutTime
+            ? 0
+            : Math.max(0, Math.round((new Date(expectedCheckOutTime).getTime() - new Date(checkOutAt).getTime()) / 60000)),
+        overtimeMinutes: !checkOutAt || !expectedCheckOutTime
+            ? 0
+            : Math.max(0, Math.round((new Date(checkOutAt).getTime() - new Date(expectedCheckOutTime).getTime()) / 60000)),
+        totalWorkingMinutes: calculateMinutesBetween(checkInAt, checkOutAt)
+    };
+}

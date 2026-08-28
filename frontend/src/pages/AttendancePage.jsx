@@ -11,6 +11,8 @@ export default function AttendancePage() {
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
     const [history, setHistory] = useState([]);
+    const [attendanceState, setAttendanceState] = useState(null);
+    const [todaySummary, setTodaySummary] = useState(null);
     const { user } = useAuth();
 
     useEffect(() => {
@@ -20,8 +22,12 @@ export default function AttendancePage() {
                     params: user?.employeeId ? { employeeId: user.employeeId } : {}
                 });
                 setHistory(data.events || []);
+                setTodaySummary(data.todaySummary || null);
+                setAttendanceState(data.attendanceState || null);
             } catch {
                 setHistory([]);
+                setTodaySummary(null);
+                setAttendanceState(null);
             }
         }
 
@@ -61,6 +67,8 @@ export default function AttendancePage() {
                 params: user?.employeeId ? { employeeId: user.employeeId } : {}
             });
             setHistory(refreshedHistory.events || []);
+            setTodaySummary(refreshedHistory.todaySummary || data.summary || null);
+            setAttendanceState(refreshedHistory.attendanceState || data.attendanceState || null);
         } catch (error) {
             setResult(error?.response?.data || { message: 'Attendance submission failed' });
             toast.error(error?.response?.data?.message || 'Attendance submission failed');
@@ -68,6 +76,9 @@ export default function AttendancePage() {
             setLoading(false);
         }
     }
+
+    const canCheckIn = !loading && (!attendanceState || (!attendanceState.hasCheckedIn && attendanceState.actionMode !== 'COMPLETE'));
+    const canCheckOut = !loading && Boolean(attendanceState?.hasCheckedIn) && !attendanceState?.hasCheckedOut;
 
     return (
         <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
@@ -91,21 +102,34 @@ export default function AttendancePage() {
                     <div className="rounded-full border border-white/10 bg-black/15 px-4 py-3 text-xs uppercase tracking-[0.28em] text-ink-200">
                         Employee ID: {user?.employeeId || 'Not linked'}
                     </div>
+                    <div className="rounded-full border border-white/10 bg-black/15 px-4 py-3 text-xs uppercase tracking-[0.28em] text-ink-200">
+                        {attendanceState?.actionDetail || 'Present available'}
+                    </div>
                     <button
-                        disabled={loading}
+                        disabled={!canCheckIn}
                         onClick={() => submitAttendance('check-in')}
                         className="rounded-full bg-white px-5 py-3 text-sm font-medium text-ink-900 disabled:opacity-60"
                     >
                         {loading ? 'Processing...' : 'Check in'}
                     </button>
                     <button
-                        disabled={loading}
+                        disabled={!canCheckOut}
                         onClick={() => submitAttendance('check-out')}
                         className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white disabled:opacity-60"
                     >
                         Check out
                     </button>
                 </div>
+                {attendanceState?.effectiveWindow ? (
+                    <div className="mt-5 rounded-3xl border border-white/10 bg-black/15 p-4 text-sm text-ink-200">
+                        <div className="text-xs uppercase tracking-[0.3em] text-ink-300">{attendanceState.effectiveWindow.windowLabel}</div>
+                        <div className="mt-2 text-white">
+                            Expected window: {formatDateTime(attendanceState.effectiveWindow.expectedCheckInTime)} to {formatDateTime(attendanceState.effectiveWindow.expectedCheckOutTime)}
+                        </div>
+                        <div className="mt-2 text-ink-200">Today check in: {formatDateTime(todaySummary?.firstCheckIn)}</div>
+                        <div className="mt-1 text-ink-200">Today check out: {formatDateTime(todaySummary?.lastCheckOut)}</div>
+                    </div>
+                ) : null}
             </section>
 
             <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-soft">

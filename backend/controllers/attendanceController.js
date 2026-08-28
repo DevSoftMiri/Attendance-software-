@@ -1,5 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { buildCheckInResult, buildCheckOutResult } from '../services/attendanceService.js';
+import { buildAttendanceState, resolveAttendanceLeaveWindow, resolveAttendanceStatus } from '../services/leaveAttendanceService.js';
 import { models } from '../models/store.js';
 
 async function resolveEmployee(employeeId) {
@@ -54,8 +55,10 @@ export const checkIn = asyncHandler(async (request, response) => {
     }
 
     const shift = await resolveShift(employee);
+    const summaryDate = new Date().toISOString().slice(0, 10);
+    const { effectiveWindow } = await resolveAttendanceLeaveWindow({ employee, shift, attendanceDate: summaryDate });
     const officeIpPolicy = await resolveOfficeIpPolicy(employee, request);
-    const result = await buildCheckInResult({ employee, shift, liveImage, geo: geoLocation, officeIp: officeIpPolicy, requestMeta });
+    const result = await buildCheckInResult({ employee, shift, liveImage, geo: geoLocation, officeIp: officeIpPolicy, requestMeta, effectiveWindow });
     const event = await models.AttendanceEvent.create({
         employeeId,
         eventType: 'CHECK_IN',
@@ -81,7 +84,6 @@ export const checkIn = asyncHandler(async (request, response) => {
         return response.status(422).json({ message: result.validation.failureReason, event, result });
     }
 
-    const summaryDate = new Date().toISOString().slice(0, 10);
     const [summary] = await models.AttendanceSummary.findOrCreate({
         where: { employeeId, attendanceDate: summaryDate },
         defaults: {
@@ -89,7 +91,12 @@ export const checkIn = asyncHandler(async (request, response) => {
             attendanceDate: summaryDate,
             shiftId: employee.shiftId || null,
             firstCheckIn: new Date(),
-            attendanceStatus: 'PRESENT'
+            lateMinutes: result.lateMinutes,
+            attendanceStatus: resolveAttendanceStatus({ effectiveWindow, lateMinutes: result.lateMinutes }),
+            appliedLeaveRequestId: effectiveWindow.leaveRequestId,
+            appliedLeaveMode: effectiveWindow.leaveMode,
+            expectedCheckInTime: effectiveWindow.expectedCheckInTime,
+            expectedCheckOutTime: effectiveWindow.expectedCheckOutTime
         }
     });
 
@@ -97,10 +104,15 @@ export const checkIn = asyncHandler(async (request, response) => {
         summary.firstCheckIn = new Date();
     }
     summary.shiftId = employee.shiftId || null;
-    summary.attendanceStatus = 'PRESENT';
+    summary.lateMinutes = result.lateMinutes;
+    summary.attendanceStatus = resolveAttendanceStatus({ effectiveWindow, lateMinutes: result.lateMinutes });
+    summary.appliedLeaveRequestId = effectiveWindow.leaveRequestId;
+    summary.appliedLeaveMode = effectiveWindow.leaveMode;
+    summary.expectedCheckInTime = effectiveWindow.expectedCheckInTime;
+    summary.expectedCheckOutTime = effectiveWindow.expectedCheckOutTime;
     await summary.save();
 
-    return response.status(201).json({ message: 'Check-in recorded', event, summary, result });
+    return response.status(201).json({ message: 'Check-in recorded', event, summary, result, attendanceState: buildAttendanceState(summary, effectiveWindow) });
 });
 
 export const checkOut = asyncHandler(async (request, response) => {
@@ -119,16 +131,23 @@ export const checkOut = asyncHandler(async (request, response) => {
 
     summary.lastCheckOut = new Date();
     const shift = await resolveShift(employee);
+    const { effectiveWindow } = await resolveAttendanceLeaveWindow({ employee, shift, attendanceDate: summaryDate });
     const calculation = buildCheckOutResult({
         shift,
         loginTime: employee.loginTime,
         checkInAt: summary.firstCheckIn,
-        checkOutAt: summary.lastCheckOut
+        checkOutAt: summary.lastCheckOut,
+        effectiveWindow
     });
     summary.totalWorkingMinutes = calculation.totalWorkingMinutes;
     summary.lateMinutes = calculation.lateMinutes;
     summary.earlyLogoutMinutes = calculation.earlyLogoutMinutes;
     summary.overtimeMinutes = calculation.overtimeMinutes;
+    summary.attendanceStatus = resolveAttendanceStatus({ effectiveWindow, lateMinutes: calculation.lateMinutes });
+    summary.appliedLeaveRequestId = effectiveWindow.leaveRequestId;
+    summary.appliedLeaveMode = effectiveWindow.leaveMode;
+    summary.expectedCheckInTime = effectiveWindow.expectedCheckInTime;
+    summary.expectedCheckOutTime = effectiveWindow.expectedCheckOutTime;
     await summary.save();
 
     const event = await models.AttendanceEvent.create({
@@ -141,7 +160,7 @@ export const checkOut = asyncHandler(async (request, response) => {
         validationStatus: 'PASSED'
     });
 
-    return response.json({ message: 'Check-out recorded', event, summary, calculation });
+    return response.json({ message: 'Check-out recorded', event, summary, calculation, attendanceState: buildAttendanceState(summary, effectiveWindow) });
 });
 
 export const history = asyncHandler(async (request, response) => {
@@ -152,5 +171,18 @@ export const history = asyncHandler(async (request, response) => {
         limit: 100
     });
 
-    return response.json({ events });
+    let todaySummary = null;
+    let attendanceState = null;
+    if (employeeId) {
+        const employee = await resolveEmployee(employeeId);
+        if (employee) {
+            const today = new Date().toISOString().slice(0, 10);
+            todaySummary = await models.AttendanceSummary.findOne({ where: { employeeId, attendanceDate: today } });
+            const shift = await resolveShift(employee);
+            const { effectiveWindow } = await resolveAttendanceLeaveWindow({ employee, shift, attendanceDate: today });
+            attendanceState = buildAttendanceState(todaySummary, effectiveWindow);
+        }
+    }
+
+    return response.json({ events, todaySummary, attendanceState });
 });

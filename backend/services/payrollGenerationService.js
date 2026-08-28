@@ -306,7 +306,7 @@ async function upsertDraftPayroll({
             approvedPaidLeaveDays: leaveSummary.approvedPaidLeaveDays,
             approvedUnpaidLeaveDays: leaveSummary.approvedUnpaidLeaveDays,
             approvedSickLeaveDays: leaveSummary.approvedSickLeaveDays,
-            approvedCasualLeaveDays: leaveSummary.approvedCasualLeaveDays,
+            approvedShortLeaveDays: leaveSummary.approvedShortLeaveDays,
             leaveBreakdown: leaveSummary.leaveBreakdown
         },
         payrollInputs: editableFields,

@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { models } from '../models/store.js';
+import { isHalfDayLeaveMode } from '../utils/leaveModes.js';
 
 function enumerateDates(startDate, endDate) {
     const dates = [];
@@ -34,7 +35,7 @@ export async function aggregateApprovedLeaves(employee, month, year, period) {
         approvedPaidLeaveDays: 0,
         approvedUnpaidLeaveDays: 0,
         approvedSickLeaveDays: 0,
-        approvedCasualLeaveDays: 0,
+        approvedShortLeaveDays: 0,
         leaveBreakdown: []
     };
 
@@ -43,7 +44,7 @@ export async function aggregateApprovedLeaves(employee, month, year, period) {
         const paid = leaveType?.paid !== false;
         const overlapStart = request.startDate > period.startDate ? request.startDate : period.startDate;
         const overlapEnd = request.endDate < period.endDate ? request.endDate : period.endDate;
-        const quantity = request.leaveMode === 'HALF_DAY' ? 0.5 : enumerateDates(overlapStart, overlapEnd).length;
+        const quantity = isHalfDayLeaveMode(request.leaveMode) ? 0.5 : enumerateDates(overlapStart, overlapEnd).length;
 
         if (paid) {
             summary.approvedPaidLeaveDays += quantity;
@@ -54,17 +55,17 @@ export async function aggregateApprovedLeaves(employee, month, year, period) {
         if (leaveType?.code === 'SICK_LEAVE') {
             summary.approvedSickLeaveDays += quantity;
         }
-        if (leaveType?.code === 'CASUAL_LEAVE') {
-            summary.approvedCasualLeaveDays += quantity;
+        if (['SHORT_LEAVE', 'CASUAL_LEAVE'].includes(leaveType?.code)) {
+            summary.approvedShortLeaveDays += quantity;
         }
 
-        const dayEntries = request.leaveMode === 'HALF_DAY'
+        const dayEntries = isHalfDayLeaveMode(request.leaveMode)
             ? [request.startDate]
             : enumerateDates(overlapStart, overlapEnd);
         for (const date of dayEntries) {
             leaveByDate[date] = {
                 paid,
-                quantity: request.leaveMode === 'HALF_DAY' ? 0.5 : 1,
+                quantity: isHalfDayLeaveMode(request.leaveMode) ? 0.5 : 1,
                 code: leaveType?.code || 'LEAVE',
                 name: leaveType?.name || 'Leave'
             };
@@ -88,8 +89,7 @@ export async function aggregateApprovedLeaves(employee, month, year, period) {
         approvedPaidLeaveDays: Number(summary.approvedPaidLeaveDays.toFixed(2)),
         approvedUnpaidLeaveDays: Number(summary.approvedUnpaidLeaveDays.toFixed(2)),
         approvedSickLeaveDays: Number(summary.approvedSickLeaveDays.toFixed(2)),
-        approvedCasualLeaveDays: Number(summary.approvedCasualLeaveDays.toFixed(2)),
+        approvedShortLeaveDays: Number(summary.approvedShortLeaveDays.toFixed(2)),
         leaveByDate
     };
 }
-

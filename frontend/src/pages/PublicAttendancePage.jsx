@@ -48,6 +48,14 @@ export default function PublicAttendancePage() {
     const [loadingAction, setLoadingAction] = useState('');
     const [scanStatus, setScanStatus] = useState('Preparing camera...');
 
+    function formatWindowHint(state) {
+        if (!state?.effectiveWindow) {
+            return 'Standard full-day attendance window';
+        }
+
+        return `${state.effectiveWindow.windowLabel}: ${formatDateTime(state.effectiveWindow.expectedCheckInTime)} to ${formatDateTime(state.effectiveWindow.expectedCheckOutTime)}`;
+    }
+
     function resetDetection() {
         setDetectedEmployee(null);
         setPolicy(null);
@@ -445,7 +453,7 @@ export default function PublicAttendancePage() {
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                 <div className="text-[11px] uppercase tracking-[0.25em] text-ink-300">Attendance action</div>
-                                <div className="mt-1 text-white">{attendanceState.actionMode === 'CHECK_OUT' ? 'Logout available' : 'Present available'}</div>
+                                <div className="mt-1 text-white">{attendanceState.actionDetail || (attendanceState.actionMode === 'CHECK_OUT' ? 'Logout available' : 'Present available')}</div>
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
                                 <div className="text-[11px] uppercase tracking-[0.25em] text-ink-300">Connection</div>
@@ -465,6 +473,10 @@ export default function PublicAttendancePage() {
                                 <div className="text-[11px] uppercase tracking-[0.25em] text-ink-300">Office network</div>
                                 <div className="mt-1 text-white">{policy?.officeIpRequired ? (policy.officeIpVerified ? 'Verified' : 'Not verified') : 'Not enforced'}</div>
                             </div>
+                            <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
+                                <div className="text-[11px] uppercase tracking-[0.25em] text-ink-300">Attendance window</div>
+                                <div className="mt-1 text-white">{formatWindowHint(attendanceState)}</div>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -481,6 +493,7 @@ export default function PublicAttendancePage() {
                                 <div>Shift: {detectedEmployee?.shiftId || '-'}</div>
                                 <div>Current IP: {policy?.currentIp || '-'}</div>
                                 <div>Geofence: {policy?.branch ? `${policy.branch.name} (${policy.branch.radiusMetres} m radius)` : 'Not configured'}</div>
+                                <div>Leave window: {attendanceState.leaveMode ? attendanceState.leaveMode.replaceAll('_', ' ') : 'None'}</div>
                                 <div>Today check in: {formatDateTime(todaySummary?.firstCheckIn)}</div>
                                 <div>Today check out: {formatDateTime(todaySummary?.lastCheckOut)}</div>
                             </div>

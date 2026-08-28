@@ -122,6 +122,7 @@ export default function AttendanceSummaryPage() {
                     <select name="status" value={filters.status} onChange={handleChange} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
                         <option value="">All statuses</option>
                         <option value="PRESENT">Present</option>
+                        <option value="SHORT_LEAVE">Short Leave</option>
                         <option value="ABSENT">Absent</option>
                         <option value="HALF_DAY">Half Day</option>
                         <option value="ON_LEAVE">On Leave</option>

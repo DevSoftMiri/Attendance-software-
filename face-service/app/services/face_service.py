@@ -8,7 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import psutil
+try:
+    import psutil
+except Exception:  # pragma: no cover - optional logging dependency
+    psutil = None
 
 from ..models.schemas import FaceEnrolRequest, FaceIdentifyRequest, FaceQualityRequest, FaceVerifyRequest
 from ..utils.files import (
@@ -67,7 +70,7 @@ def _memory_logging_enabled() -> bool:
 
 
 def log_memory(label: str = '') -> None:
-    if not _memory_logging_enabled():
+    if not _memory_logging_enabled() or psutil is None:
         return
 
     process = psutil.Process(os.getpid())

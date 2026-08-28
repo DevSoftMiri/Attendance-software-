@@ -1,6 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { identifyFace } from '../services/faceService.js';
 import { buildCheckInResult, buildCheckOutResult } from '../services/attendanceService.js';
+import { buildAttendanceState, resolveAttendanceLeaveWindow, resolveAttendanceStatus } from '../services/leaveAttendanceService.js';
 import { models } from '../models/store.js';
 
 function getRequestIp(request) {
@@ -33,14 +34,6 @@ async function resolveTodaySummary(employeeId) {
     return models.AttendanceSummary.findOne({
         where: { employeeId, attendanceDate: summaryDate }
     });
-}
-
-function buildAttendanceState(summary) {
-    return {
-        hasCheckedIn: Boolean(summary?.firstCheckIn),
-        hasCheckedOut: Boolean(summary?.lastCheckOut),
-        actionMode: summary?.firstCheckIn && !summary?.lastCheckOut ? 'CHECK_OUT' : 'CHECK_IN'
-    };
 }
 
 function buildAttendanceEmployee(employee, branch) {
@@ -132,6 +125,8 @@ async function markAttendance(request, response, actionType) {
 
     const branch = await resolveBranch(employee);
     const shift = await resolveShift(employee);
+    const summaryDate = new Date().toISOString().slice(0, 10);
+    const { effectiveWindow } = await resolveAttendanceLeaveWindow({ employee, shift, attendanceDate: summaryDate });
     const officeIpPolicy = await resolveOfficeIpPolicy(employee, request);
     const result = await buildCheckInResult({
         employee: buildAttendanceEmployee(employee, branch),
@@ -140,7 +135,8 @@ async function markAttendance(request, response, actionType) {
         geo: geoLocation,
         officeIp: officeIpPolicy,
         requestMeta,
-        faceVerification: faceMatch
+        faceVerification: faceMatch,
+        effectiveWindow
     });
 
     if (actionType === 'CHECK_IN') {
@@ -169,7 +165,6 @@ async function markAttendance(request, response, actionType) {
             return response.status(422).json({ message: result.validation.failureReason, event, result });
         }
 
-        const summaryDate = new Date().toISOString().slice(0, 10);
         const [summary] = await models.AttendanceSummary.findOrCreate({
             where: { employeeId: employee.id, attendanceDate: summaryDate },
             defaults: {
@@ -177,7 +172,12 @@ async function markAttendance(request, response, actionType) {
                 attendanceDate: summaryDate,
                 shiftId: employee.shiftId || null,
                 firstCheckIn: new Date(),
-                attendanceStatus: 'PRESENT'
+                lateMinutes: result.lateMinutes,
+                attendanceStatus: resolveAttendanceStatus({ effectiveWindow, lateMinutes: result.lateMinutes }),
+                appliedLeaveRequestId: effectiveWindow.leaveRequestId,
+                appliedLeaveMode: effectiveWindow.leaveMode,
+                expectedCheckInTime: effectiveWindow.expectedCheckInTime,
+                expectedCheckOutTime: effectiveWindow.expectedCheckOutTime
             }
         });
 
@@ -185,7 +185,12 @@ async function markAttendance(request, response, actionType) {
             summary.firstCheckIn = new Date();
         }
         summary.shiftId = employee.shiftId || null;
-        summary.attendanceStatus = 'PRESENT';
+        summary.lateMinutes = result.lateMinutes;
+        summary.attendanceStatus = resolveAttendanceStatus({ effectiveWindow, lateMinutes: result.lateMinutes });
+        summary.appliedLeaveRequestId = effectiveWindow.leaveRequestId;
+        summary.appliedLeaveMode = effectiveWindow.leaveMode;
+        summary.expectedCheckInTime = effectiveWindow.expectedCheckInTime;
+        summary.expectedCheckOutTime = effectiveWindow.expectedCheckOutTime;
         await summary.save();
 
         return response.status(201).json({
@@ -199,7 +204,7 @@ async function markAttendance(request, response, actionType) {
             },
             event,
             summary,
-            attendanceState: buildAttendanceState(summary),
+            attendanceState: buildAttendanceState(summary, effectiveWindow),
             faceMatch
         });
     }
@@ -229,7 +234,6 @@ async function markAttendance(request, response, actionType) {
         return response.status(422).json({ message: result.validation.failureReason, event, result });
     }
 
-    const summaryDate = new Date().toISOString().slice(0, 10);
     const summary = await models.AttendanceSummary.findOne({ where: { employeeId: employee.id, attendanceDate: summaryDate } });
     if (!summary) {
         return response.status(404).json({ message: 'Attendance summary not found for today' });
@@ -240,12 +244,18 @@ async function markAttendance(request, response, actionType) {
         shift,
         loginTime: employee.loginTime,
         checkInAt: summary.firstCheckIn,
-        checkOutAt: summary.lastCheckOut
+        checkOutAt: summary.lastCheckOut,
+        effectiveWindow
     });
     summary.totalWorkingMinutes = calculation.totalWorkingMinutes;
     summary.lateMinutes = calculation.lateMinutes;
     summary.earlyLogoutMinutes = calculation.earlyLogoutMinutes;
     summary.overtimeMinutes = calculation.overtimeMinutes;
+    summary.attendanceStatus = resolveAttendanceStatus({ effectiveWindow, lateMinutes: calculation.lateMinutes });
+    summary.appliedLeaveRequestId = effectiveWindow.leaveRequestId;
+    summary.appliedLeaveMode = effectiveWindow.leaveMode;
+    summary.expectedCheckInTime = effectiveWindow.expectedCheckInTime;
+    summary.expectedCheckOutTime = effectiveWindow.expectedCheckOutTime;
     await summary.save();
 
     const event = await models.AttendanceEvent.create({
@@ -280,7 +290,7 @@ async function markAttendance(request, response, actionType) {
         },
         event,
         summary,
-        attendanceState: buildAttendanceState(summary),
+        attendanceState: buildAttendanceState(summary, effectiveWindow),
         calculation,
         faceMatch
     });
@@ -302,6 +312,12 @@ export const identify = asyncHandler(async (request, response) => {
     const branch = await resolveBranch(employee);
     const officeIpPolicy = await resolveOfficeIpPolicy(employee, request);
     const todaySummary = await resolveTodaySummary(employee.id);
+    const shift = await resolveShift(employee);
+    const { effectiveWindow } = await resolveAttendanceLeaveWindow({
+        employee,
+        shift,
+        attendanceDate: new Date().toISOString().slice(0, 10)
+    });
 
     return response.json({
         employee: {
@@ -315,7 +331,7 @@ export const identify = asyncHandler(async (request, response) => {
         },
         faceMatch,
         summary: todaySummary,
-        attendanceState: buildAttendanceState(todaySummary),
+        attendanceState: buildAttendanceState(todaySummary, effectiveWindow),
         policy: {
             officeIpRequired: officeIpPolicy.required,
             officeIpVerified: officeIpPolicy.verified,
@@ -327,6 +343,14 @@ export const identify = asyncHandler(async (request, response) => {
                 longitude: branch.longitude,
                 radiusMetres: branch.radiusMetres
             } : null
+        },
+        effectiveWindow: {
+            leaveRequestId: effectiveWindow.leaveRequestId,
+            leaveMode: effectiveWindow.leaveMode,
+            expectedCheckInTime: effectiveWindow.expectedCheckInTime,
+            expectedCheckOutTime: effectiveWindow.expectedCheckOutTime,
+            expectedWorkingMinutes: effectiveWindow.expectedWorkingMinutes,
+            windowLabel: effectiveWindow.windowLabel
         }
     });
 });

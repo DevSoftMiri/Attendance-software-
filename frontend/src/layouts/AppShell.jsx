@@ -92,7 +92,7 @@ export default function AppShell({ children }) {
             ) : null}
 
             <div className="mx-auto flex min-h-screen max-w-[1600px] gap-6 p-4 lg:p-6">
-                <aside className={`fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-sm flex-col border-r border-white/10 bg-[#0b1020] p-5 shadow-2xl transition-transform duration-200 lg:hidden ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                <aside className={`fixed inset-y-0 left-0 z-50 flex w-[86vw] max-w-sm flex-col overflow-y-auto overscroll-contain border-r border-white/10 bg-[#0b1020] p-5 shadow-2xl transition-transform duration-200 lg:hidden ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                     <div className="flex items-start justify-between gap-4 rounded-3xl border border-white/10 bg-gradient-to-br from-white/15 to-white/5 p-4">
                         <div>
                             <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Attendance</div>

@@ -1,7 +1,7 @@
-import { evaluateAttendanceWindow } from '../utils/attendanceCalculator.js';
+import { evaluateAttendanceWindow, evaluateAttendanceWindowWithExpectations } from '../utils/attendanceCalculator.js';
 import { verifyFace } from './faceService.js';
 
-export async function buildCheckInResult({ employee, shift, liveImage, geo, officeIp, requestMeta, faceVerification: providedFaceVerification = null }) {
+export async function buildCheckInResult({ employee, shift, liveImage, geo, officeIp, requestMeta, faceVerification: providedFaceVerification = null, effectiveWindow = null }) {
     const faceVerification = providedFaceVerification || await verifyFace({
         employeeId: employee.id,
         image: liveImage,
@@ -51,12 +51,19 @@ export async function buildCheckInResult({ employee, shift, liveImage, geo, offi
     }
 
     validation.validationStatus = 'PASSED';
-    const window = evaluateAttendanceWindow({
-        shift,
-        loginTime: employee?.loginTime,
-        checkInAt: new Date().toISOString(),
-        checkOutAt: null
-    });
+    const window = effectiveWindow
+        ? evaluateAttendanceWindowWithExpectations({
+            checkInAt: new Date().toISOString(),
+            checkOutAt: null,
+            expectedCheckInTime: effectiveWindow.expectedCheckInTime,
+            expectedCheckOutTime: effectiveWindow.expectedCheckOutTime
+        })
+        : evaluateAttendanceWindow({
+            shift,
+            loginTime: employee?.loginTime,
+            checkInAt: new Date().toISOString(),
+            checkOutAt: null
+        });
 
     return {
         validation,
@@ -64,13 +71,28 @@ export async function buildCheckInResult({ employee, shift, liveImage, geo, offi
         officeLatitude,
         officeLongitude,
         requestMeta,
+        effectiveWindow: effectiveWindow ? {
+            leaveRequestId: effectiveWindow.leaveRequestId,
+            leaveMode: effectiveWindow.leaveMode,
+            expectedCheckInTime: effectiveWindow.expectedCheckInTime,
+            expectedCheckOutTime: effectiveWindow.expectedCheckOutTime,
+            expectedWorkingMinutes: effectiveWindow.expectedWorkingMinutes,
+            windowLabel: effectiveWindow.windowLabel
+        } : null,
         ...window,
         faceVerification
     };
 }
 
-export function buildCheckOutResult({ shift, loginTime, checkInAt, checkOutAt }) {
-    return evaluateAttendanceWindow({ shift, loginTime, checkInAt, checkOutAt });
+export function buildCheckOutResult({ shift, loginTime, checkInAt, checkOutAt, effectiveWindow = null }) {
+    return effectiveWindow
+        ? evaluateAttendanceWindowWithExpectations({
+            checkInAt,
+            checkOutAt,
+            expectedCheckInTime: effectiveWindow.expectedCheckInTime,
+            expectedCheckOutTime: effectiveWindow.expectedCheckOutTime
+        })
+        : evaluateAttendanceWindow({ shift, loginTime, checkInAt, checkOutAt });
 }
 
 function haversineDistance(lat1, lon1, lat2, lon2) {

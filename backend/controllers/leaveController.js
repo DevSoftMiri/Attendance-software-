@@ -1,12 +1,14 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { models } from '../models/store.js';
+import { formatLeaveModeLabel, isHalfDayLeaveMode, isSupportedLeaveMode, LEAVE_MODE } from '../utils/leaveModes.js';
 
 const DEFAULT_LEAVE_TYPES = [
-    { id: 1, code: 'PAID_LEAVE', name: 'Paid Leave', paid: true },
-    { id: 2, code: 'WFH', name: 'Work From Home', paid: true },
-    { id: 3, code: 'SICK_LEAVE', name: 'Sick Leave', paid: true },
-    { id: 4, code: 'CASUAL_LEAVE', name: 'Casual Leave', paid: true },
-    { id: 5, code: 'UNPAID_LEAVE', name: 'Unpaid Leave', paid: false }
+    { id: 1, code: 'PAID_LEAVE', name: 'Paid Leave', paid: true, allowHalfDay: false },
+    { id: 2, code: 'WFH', name: 'Work From Home', paid: true, allowHalfDay: true },
+    { id: 3, code: 'SICK_LEAVE', name: 'Sick Leave', paid: true, allowHalfDay: true },
+    { id: 4, code: 'SHORT_LEAVE', name: 'Short Leave', paid: true, allowHalfDay: true },
+    { id: 5, code: 'UNPAID_LEAVE', name: 'Unpaid Leave', paid: false, allowHalfDay: false },
+    { id: 6, code: 'HALF_DAY', name: 'Half Day', paid: true, allowHalfDay: true }
 ];
 
 function canReviewAllRequests(roleCode) {
@@ -29,9 +31,26 @@ function normalizeAttendancePolicies(value = {}) {
     };
 }
 
+function normalizeLeaveType(leaveType) {
+    if (!leaveType) {
+        return leaveType;
+    }
+
+    const source = typeof leaveType.toJSON === 'function' ? leaveType.toJSON() : leaveType;
+    if (source.code !== 'CASUAL_LEAVE') {
+        return source;
+    }
+
+    return {
+        ...source,
+        code: 'SHORT_LEAVE',
+        name: 'Short Leave'
+    };
+}
+
 async function resolveLeaveTypes() {
     const leaveTypes = await models.LeaveType?.findAll({ order: [['id', 'ASC']] });
-    return leaveTypes?.length ? leaveTypes : DEFAULT_LEAVE_TYPES;
+    return leaveTypes?.length ? leaveTypes.map(normalizeLeaveType) : DEFAULT_LEAVE_TYPES;
 }
 
 async function resolveLeaveBalances(employeeId, year = new Date().getUTCFullYear()) {
@@ -49,6 +68,7 @@ async function resolveLeaveBalances(employeeId, year = new Date().getUTCFullYear
             code: leaveType.code,
             name: leaveType.name,
             paid: leaveType.paid !== false,
+            allowHalfDay: leaveType.allowHalfDay !== false,
             openingBalance: Number(existing?.openingBalance || 0),
             currentBalance: Number(existing?.currentBalance || 0),
             year
@@ -61,7 +81,7 @@ function countLeaveDays(startDate, endDate, leaveMode) {
         return 0;
     }
 
-    if (leaveMode === 'HALF_DAY') {
+    if (isHalfDayLeaveMode(leaveMode)) {
         return 0.5;
     }
 
@@ -143,7 +163,8 @@ async function enrichLeaveRequests(requests) {
             employeeName: employee?.fullName || `Employee #${leaveRequest.employeeId}`,
             employeeCode: employee?.employeeCode || null,
             leaveTypeCode: leaveType?.code || null,
-            leaveTypeName: leaveType?.name || `Leave Type ${leaveRequest.leaveTypeId}`
+            leaveTypeName: leaveType?.name || `Leave Type ${leaveRequest.leaveTypeId}`,
+            leaveModeLabel: formatLeaveModeLabel(leaveRequest.leaveMode)
         };
     });
 }
@@ -238,12 +259,29 @@ export const createLeaveRequest = asyncHandler(async (request, response) => {
         return response.status(422).json({ message: 'Please choose a valid leave type' });
     }
 
+    const leaveMode = String(request.body.leaveMode || LEAVE_MODE.FULL_DAY).toUpperCase();
+    if (!isSupportedLeaveMode(leaveMode)) {
+        return response.status(422).json({ message: 'Leave mode must be FULL_DAY, FIRST_HALF, or SECOND_HALF' });
+    }
+    if (leaveType.code === 'HALF_DAY' && ![LEAVE_MODE.FIRST_HALF, LEAVE_MODE.SECOND_HALF].includes(leaveMode)) {
+        return response.status(422).json({ message: 'Half Day leave requires first-half or second-half selection' });
+    }
+    if (leaveType.code !== 'HALF_DAY' && leaveMode !== LEAVE_MODE.FULL_DAY && leaveType.allowHalfDay === false) {
+        return response.status(422).json({ message: `${leaveType.name} can only be applied as a full-day leave` });
+    }
+    if (leaveType.code !== 'HALF_DAY' && [LEAVE_MODE.FIRST_HALF, LEAVE_MODE.SECOND_HALF].includes(leaveMode) && leaveType.allowHalfDay === false) {
+        return response.status(422).json({ message: `${leaveType.name} can only be applied as a full-day leave` });
+    }
+    if (leaveMode !== LEAVE_MODE.FULL_DAY && request.body.startDate !== request.body.endDate) {
+        return response.status(422).json({ message: 'First-half and second-half leave must be requested for a single date' });
+    }
+
     const existingRequests = await enrichLeaveRequests(await models.LeaveRequest.findAll({
         where: { employeeId },
         order: [['createdAt', 'DESC']]
     }));
     const leaveSummary = await resolvePaidLeaveSummary(employee, existingRequests, request.body.endDate || request.body.startDate);
-    const requestedDays = countLeaveDays(request.body.startDate, request.body.endDate, request.body.leaveMode);
+    const requestedDays = countLeaveDays(request.body.startDate, request.body.endDate, leaveMode);
 
     if (leaveType.code === 'PAID_LEAVE' && requestedDays > leaveSummary.availablePaidLeave) {
         return response.status(422).json({
@@ -253,6 +291,7 @@ export const createLeaveRequest = asyncHandler(async (request, response) => {
 
     const leaveRequest = await models.LeaveRequest.create({
         ...request.body,
+        leaveMode,
         employeeId,
         submittedAt: new Date(),
         status: 'PENDING',
