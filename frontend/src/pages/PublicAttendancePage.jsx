@@ -29,6 +29,7 @@ export default function PublicAttendancePage() {
     const scanInFlightRef = useRef(false);
     const deferredInstallPromptRef = useRef(null);
     const locationRequestStartedRef = useRef(false);
+    const locationWarningShownRef = useRef(false);
     const navigate = useNavigate();
     const installContext = detectInstallContext();
     const [location, setLocation] = useState(null);
@@ -72,13 +73,14 @@ export default function PublicAttendancePage() {
         setScanning(true);
     }
 
-    async function requestLocationAccess(showSuccessToast = false) {
+    async function requestLocationAccess({ showSuccessToast = false, showErrorToast = false } = {}) {
         setLocationStatus('requesting');
         const currentLocation = await captureCurrentLocation();
 
         if (currentLocation) {
             setLocation(currentLocation);
             setLocationStatus('granted');
+            locationWarningShownRef.current = false;
             if (showSuccessToast) {
                 toast.success('Location permission granted');
             }
@@ -86,8 +88,9 @@ export default function PublicAttendancePage() {
         }
 
         setLocationStatus('unavailable');
-        if (showSuccessToast) {
-            toast.error('Location unavailable. Please allow location access in the browser.');
+        if (showErrorToast && !locationWarningShownRef.current) {
+            toast.error('Please turn on location to mark attendance');
+            locationWarningShownRef.current = true;
         }
         return null;
     }
@@ -137,7 +140,7 @@ export default function PublicAttendancePage() {
         }
 
         locationRequestStartedRef.current = true;
-        requestLocationAccess();
+        requestLocationAccess({ showErrorToast: true });
     }, []);
 
     useEffect(() => {
@@ -186,7 +189,7 @@ export default function PublicAttendancePage() {
                 });
                 setScanStatus(`Face detected: ${data.employee.fullName}`);
                 setScanning(false);
-                requestLocationAccess().then((currentLocation) => {
+                requestLocationAccess({ showErrorToast: true }).then((currentLocation) => {
                     if (active) {
                         setLocation(currentLocation);
                     }
@@ -290,7 +293,10 @@ export default function PublicAttendancePage() {
                 throw new Error('Unable to capture image');
             }
 
-            const currentLocation = await requestLocationAccess();
+            const currentLocation = await requestLocationAccess({ showErrorToast: true });
+            if (!currentLocation) {
+                return;
+            }
 
             const { data } = await api.post(
                 actionType === 'CHECK_IN' ? '/public-attendance/check-in' : '/public-attendance/check-out',
@@ -431,7 +437,7 @@ export default function PublicAttendancePage() {
                         />
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:mt-5 sm:grid-cols-3">
+                    <div className="mt-4 grid gap-3 sm:mt-5 sm:grid-cols-2">
                         <button
                             type="button"
                             onClick={() => submitAttendance('CHECK_IN')}
@@ -447,13 +453,6 @@ export default function PublicAttendancePage() {
                             className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-3.5 text-sm font-medium text-white disabled:opacity-60"
                         >
                             {loadingAction === 'CHECK_OUT' ? 'Marking logout...' : 'Mark Logout'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => requestLocationAccess(true)}
-                            className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-3.5 text-sm font-medium text-white"
-                        >
-                            {locationStatus === 'requesting' ? 'Requesting location...' : 'Allow Location'}
                         </button>
                         <button
                             type="button"
@@ -506,7 +505,7 @@ export default function PublicAttendancePage() {
                                         ? 'Permission granted'
                                         : locationStatus === 'requesting'
                                             ? 'Waiting for browser location permission'
-                                            : 'Tap Allow Location if the browser did not prompt yet'}
+                                            : 'Location is unavailable or blocked in the browser'}
                                 </div>
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
