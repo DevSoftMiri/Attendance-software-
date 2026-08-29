@@ -2,48 +2,70 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { captureCurrentLocation } from '../utils/attendance';
+
+function buildOrganisationFormValues(organisation) {
+    if (!organisation) {
+        return {};
+    }
+
+    return {
+        ...organisation,
+        officeLatitude: organisation.officeGeo?.latitude ?? '',
+        officeLongitude: organisation.officeGeo?.longitude ?? '',
+        officeLocationAccuracy: organisation.officeGeo?.accuracy ?? '',
+        geofenceRadius: organisation.attendancePolicies?.geofenceRadius ?? 150,
+        maxLateArrivalMinutes: organisation.attendancePolicies?.maxLateArrivalMinutes ?? 0,
+        carryForwardUnusedPaidLeave: String(organisation.attendancePolicies?.carryForwardUnusedPaidLeave !== false),
+        standardWorkingHoursPerDay: organisation.payrollSettings?.standardWorkingHoursPerDay ?? 8,
+        graceMinutes: organisation.payrollSettings?.graceMinutes ?? 15,
+        halfDayMinimumMinutes: organisation.payrollSettings?.halfDayMinimumMinutes ?? 240,
+        overtimeEnabled: String(organisation.payrollSettings?.overtimeEnabled !== false),
+        overtimeMinimumMinutes: organisation.payrollSettings?.overtimeMinimumMinutes ?? 0,
+        overtimeRateType: organisation.payrollSettings?.overtimeRateType ?? 'fixed',
+        salaryCalculationMethod: organisation.payrollSettings?.salaryCalculationMethod ?? 'working-days',
+        holidaysPaid: String(organisation.payrollSettings?.holidaysPaid !== false),
+        weekOffPaid: String(organisation.payrollSettings?.weekOffPaid !== false),
+        shortHoursDeductionEnabled: String(organisation.payrollSettings?.shortHoursDeductionEnabled !== false),
+        shortHoursDeductionMethod: organisation.payrollSettings?.shortHoursDeductionMethod ?? 'accumulated',
+        periodStartDay: organisation.payrollSettings?.periodStartDay ?? 1,
+        periodEndDay: organisation.payrollSettings?.periodEndDay ?? 31,
+        periodEndMonthOffset: organisation.payrollSettings?.periodEndMonthOffset ?? 0,
+        payDayOfMonth: organisation.payrollSettings?.payDayOfMonth ?? 7,
+        payMonthOffset: organisation.payrollSettings?.payMonthOffset ?? 1
+    };
+}
 
 export default function SettingsPage() {
     const organisationForm = useForm();
-    const shiftForm = useForm();
-    const branchForm = useForm();
+    const shiftForm = useForm({
+        defaultValues: {
+            name: 'General Shift',
+            startTime: '',
+            endTime: '',
+            breakDurationMinutes: 0,
+            requiredWorkingHours: 8,
+            graceTimeMinutes: 0,
+            overtimeThresholdMinutes: 0,
+            overnightShift: 'false',
+            isActive: 'true'
+        }
+    });
     const approvedIpForm = useForm({ defaultValues: { isActive: 'true' } });
     const [organisation, setOrganisation] = useState(null);
     const [shifts, setShifts] = useState([]);
-    const [branches, setBranches] = useState([]);
     const [approvedIpAddresses, setApprovedIpAddresses] = useState([]);
+    const [locationLoading, setLocationLoading] = useState(false);
 
     async function loadSettings() {
         try {
             const { data } = await api.get('/settings');
             setOrganisation(data.organisation || null);
             setShifts(data.shifts || []);
-            setBranches(data.branches || []);
             setApprovedIpAddresses(data.approvedIpAddresses || []);
 
             if (data.organisation) {
-                organisationForm.reset({
-                    ...data.organisation,
-                    geofenceRadius: data.organisation.attendancePolicies?.geofenceRadius ?? 150,
-                    maxLateArrivalMinutes: data.organisation.attendancePolicies?.maxLateArrivalMinutes ?? 0,
-                    carryForwardUnusedPaidLeave: String(data.organisation.attendancePolicies?.carryForwardUnusedPaidLeave !== false),
-                    standardWorkingHoursPerDay: data.organisation.payrollSettings?.standardWorkingHoursPerDay ?? 8,
-                    graceMinutes: data.organisation.payrollSettings?.graceMinutes ?? 15,
-                    halfDayMinimumMinutes: data.organisation.payrollSettings?.halfDayMinimumMinutes ?? 240,
-                    overtimeEnabled: String(data.organisation.payrollSettings?.overtimeEnabled !== false),
-                    overtimeMinimumMinutes: data.organisation.payrollSettings?.overtimeMinimumMinutes ?? 0,
-                    overtimeRateType: data.organisation.payrollSettings?.overtimeRateType ?? 'fixed',
-                    salaryCalculationMethod: data.organisation.payrollSettings?.salaryCalculationMethod ?? 'working-days',
-                    holidaysPaid: String(data.organisation.payrollSettings?.holidaysPaid !== false),
-                    weekOffPaid: String(data.organisation.payrollSettings?.weekOffPaid !== false),
-                    shortHoursDeductionEnabled: String(data.organisation.payrollSettings?.shortHoursDeductionEnabled !== false),
-                    shortHoursDeductionMethod: data.organisation.payrollSettings?.shortHoursDeductionMethod ?? 'accumulated',
-                    periodStartDay: data.organisation.payrollSettings?.periodStartDay ?? 1,
-                    periodEndDay: data.organisation.payrollSettings?.periodEndDay ?? 31,
-                    periodEndMonthOffset: data.organisation.payrollSettings?.periodEndMonthOffset ?? 0,
-                    payDayOfMonth: data.organisation.payrollSettings?.payDayOfMonth ?? 7,
-                    payMonthOffset: data.organisation.payrollSettings?.payMonthOffset ?? 1
-                });
+                organisationForm.reset(buildOrganisationFormValues(data.organisation));
             }
         } catch {
             setOrganisation(null);
@@ -56,11 +78,18 @@ export default function SettingsPage() {
 
     async function saveOrganisation(values) {
         try {
+            const hasOfficeCoordinates = values.officeLatitude !== '' && values.officeLongitude !== '';
             const payload = {
                 id: organisation?.id || 1,
                 name: values.name,
                 initial: values.initial,
                 officeAddress: values.officeAddress,
+                officeGeo: hasOfficeCoordinates ? {
+                    latitude: Number(values.officeLatitude),
+                    longitude: Number(values.officeLongitude),
+                    accuracy: values.officeLocationAccuracy === '' ? null : Number(values.officeLocationAccuracy),
+                    updatedAt: new Date().toISOString()
+                } : null,
                 payrollPeriod: values.payrollPeriod,
                 attendancePolicies: {
                     geofenceRadius: Number(values.geofenceRadius || 150),
@@ -88,28 +117,7 @@ export default function SettingsPage() {
             };
             const { data } = await api.put('/settings/organisation', payload);
             setOrganisation(data.organisation);
-            organisationForm.reset({
-                ...data.organisation,
-                geofenceRadius: data.organisation.attendancePolicies?.geofenceRadius ?? 150,
-                maxLateArrivalMinutes: data.organisation.attendancePolicies?.maxLateArrivalMinutes ?? 0,
-                carryForwardUnusedPaidLeave: String(data.organisation.attendancePolicies?.carryForwardUnusedPaidLeave !== false),
-                standardWorkingHoursPerDay: data.organisation.payrollSettings?.standardWorkingHoursPerDay ?? 8,
-                graceMinutes: data.organisation.payrollSettings?.graceMinutes ?? 15,
-                halfDayMinimumMinutes: data.organisation.payrollSettings?.halfDayMinimumMinutes ?? 240,
-                overtimeEnabled: String(data.organisation.payrollSettings?.overtimeEnabled !== false),
-                overtimeMinimumMinutes: data.organisation.payrollSettings?.overtimeMinimumMinutes ?? 0,
-                overtimeRateType: data.organisation.payrollSettings?.overtimeRateType ?? 'fixed',
-                salaryCalculationMethod: data.organisation.payrollSettings?.salaryCalculationMethod ?? 'working-days',
-                holidaysPaid: String(data.organisation.payrollSettings?.holidaysPaid !== false),
-                weekOffPaid: String(data.organisation.payrollSettings?.weekOffPaid !== false),
-                shortHoursDeductionEnabled: String(data.organisation.payrollSettings?.shortHoursDeductionEnabled !== false),
-                shortHoursDeductionMethod: data.organisation.payrollSettings?.shortHoursDeductionMethod ?? 'accumulated',
-                periodStartDay: data.organisation.payrollSettings?.periodStartDay ?? 1,
-                periodEndDay: data.organisation.payrollSettings?.periodEndDay ?? 31,
-                periodEndMonthOffset: data.organisation.payrollSettings?.periodEndMonthOffset ?? 0,
-                payDayOfMonth: data.organisation.payrollSettings?.payDayOfMonth ?? 7,
-                payMonthOffset: data.organisation.payrollSettings?.payMonthOffset ?? 1
-            });
+            organisationForm.reset(buildOrganisationFormValues(data.organisation));
             toast.success('Organisation settings updated');
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Failed to update settings');
@@ -145,38 +153,12 @@ export default function SettingsPage() {
         }
     }
 
-    async function saveBranch(values) {
-        try {
-            const payload = {
-                ...values,
-                organisationId: organisation?.id || 1,
-                latitude: values.latitude === '' ? null : Number(values.latitude),
-                longitude: values.longitude === '' ? null : Number(values.longitude),
-                radiusMetres: Number(values.radiusMetres || 150),
-                isActive: values.isActive === 'true' || values.isActive === true
-            };
-
-            if (values.id) {
-                await api.patch(`/settings/branches/${values.id}`, payload);
-                toast.success('Branch updated');
-            } else {
-                await api.post('/settings/branches', payload);
-                toast.success('Branch created');
-            }
-
-            branchForm.reset();
-            await loadSettings();
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to save branch');
-        }
-    }
-
     async function saveApprovedIpAddress(values) {
         try {
             const payload = {
                 ...values,
                 organisationId: organisation?.id || 1,
-                branchId: values.branchId ? Number(values.branchId) : null,
+                branchId: null,
                 isActive: values.isActive === 'true' || values.isActive === true
             };
 
@@ -202,16 +184,6 @@ export default function SettingsPage() {
             await loadSettings();
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Failed to delete shift');
-        }
-    }
-
-    async function removeBranch(id) {
-        try {
-            await api.delete(`/settings/branches/${id}`);
-            toast.success('Branch deleted');
-            await loadSettings();
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to delete branch');
         }
     }
 
@@ -242,16 +214,17 @@ export default function SettingsPage() {
         });
     }
 
-    function editBranch(branch) {
-        branchForm.reset({
-            id: branch.id,
-            name: branch.name,
-            code: branch.code,
-            address: branch.address,
-            latitude: branch.latitude,
-            longitude: branch.longitude,
-            radiusMetres: branch.radiusMetres,
-            isActive: String(Boolean(branch.isActive))
+    function resetShiftFormToSingleShift() {
+        shiftForm.reset({
+            name: 'General Shift',
+            startTime: '',
+            endTime: '',
+            breakDurationMinutes: 0,
+            requiredWorkingHours: 8,
+            graceTimeMinutes: 0,
+            overtimeThresholdMinutes: 0,
+            overnightShift: 'false',
+            isActive: 'true'
         });
     }
 
@@ -260,9 +233,26 @@ export default function SettingsPage() {
             id: entry.id,
             ipAddress: entry.ipAddress,
             description: entry.description,
-            branchId: entry.branchId ? String(entry.branchId) : '',
             isActive: String(Boolean(entry.isActive))
         });
+    }
+
+    async function setOfficeLiveLocation() {
+        setLocationLoading(true);
+        try {
+            const location = await captureCurrentLocation();
+            if (!location) {
+                toast.error('Unable to access current location');
+                return;
+            }
+
+            organisationForm.setValue('officeLatitude', String(location.latitude), { shouldDirty: true });
+            organisationForm.setValue('officeLongitude', String(location.longitude), { shouldDirty: true });
+            organisationForm.setValue('officeLocationAccuracy', String(Math.round(location.accuracy || 0)), { shouldDirty: true });
+            toast.success('Live office location captured');
+        } finally {
+            setLocationLoading(false);
+        }
     }
 
     return (
@@ -274,6 +264,27 @@ export default function SettingsPage() {
                     <input {...organisationForm.register('name')} placeholder="Organisation name" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <input {...organisationForm.register('initial')} placeholder="Organisation initial" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <input {...organisationForm.register('officeAddress')} placeholder="Office address" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                    <div className="rounded-3xl border border-white/10 bg-black/15 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div className="text-xs uppercase tracking-[0.3em] text-ink-300">Office live location</div>
+                                <div className="mt-1 text-sm text-ink-200">Save one office geofence for attendance. Branch setup is not required.</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={setOfficeLiveLocation}
+                                disabled={locationLoading}
+                                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                            >
+                                {locationLoading ? 'Fetching location...' : 'Use current location'}
+                            </button>
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            <input {...organisationForm.register('officeLatitude')} placeholder="Latitude" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                            <input {...organisationForm.register('officeLongitude')} placeholder="Longitude" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                            <input {...organisationForm.register('officeLocationAccuracy')} type="number" min="0" placeholder="Accuracy (m)" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                        </div>
+                    </div>
                     <input {...organisationForm.register('payrollPeriod')} placeholder="Payroll period" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <div className="grid gap-3 sm:grid-cols-2">
                         <input {...organisationForm.register('geofenceRadius')} type="number" placeholder="Geofence radius (m)" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
@@ -313,96 +324,70 @@ export default function SettingsPage() {
                     <div className="mt-4 text-white">
                         <div className="text-2xl font-semibold">{organisation?.name || 'No organisation loaded'}</div>
                         <div className="mt-2 text-sm text-ink-200">{organisation?.officeAddress || 'Configure office location, payroll rules, and attendance policies here.'}</div>
+                        <div className="mt-3 text-sm text-ink-200">
+                            {organisation?.officeGeo?.latitude && organisation?.officeGeo?.longitude
+                                ? `${Number(organisation.officeGeo.latitude).toFixed(5)}, ${Number(organisation.officeGeo.longitude).toFixed(5)}`
+                                : 'Office live location not saved yet.'}
+                        </div>
                     </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-soft">
-                        <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Shifts</div>
-                        <form onSubmit={shiftForm.handleSubmit(saveShift)} className="mt-4 space-y-3">
-                            <input {...shiftForm.register('id')} type="hidden" />
-                            <input {...shiftForm.register('name')} placeholder="Shift name" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <input {...shiftForm.register('startTime')} type="time" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />
-                                <input {...shiftForm.register('endTime')} type="time" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <input {...shiftForm.register('breakDurationMinutes')} type="number" placeholder="Break minutes" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                                <input {...shiftForm.register('requiredWorkingHours')} type="number" placeholder="Required hours" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <input {...shiftForm.register('graceTimeMinutes')} type="number" placeholder="Grace minutes" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                                <input {...shiftForm.register('overtimeThresholdMinutes')} type="number" placeholder="Overtime threshold" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <select {...shiftForm.register('overnightShift')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
-                                    <option value="false">Not overnight</option>
-                                    <option value="true">Overnight</option>
-                                </select>
-                                <select {...shiftForm.register('isActive')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
-                                    <option value="true">Active</option>
-                                    <option value="false">Inactive</option>
-                                </select>
-                            </div>
-                            <button type="submit" className="rounded-full bg-white px-5 py-3 font-medium text-ink-900">
-                                {shiftForm.watch('id') ? 'Update shift' : 'Create shift'}
-                            </button>
-                        </form>
-                        <div className="mt-5 space-y-3 text-sm text-ink-200">
-                            {shifts.length ? shifts.map((shift) => (
-                                <div key={shift.id} className="rounded-2xl border border-white/10 bg-black/15 p-4 text-white">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <div className="font-medium">{shift.name}</div>
-                                            <div className="text-xs uppercase tracking-[0.3em] text-ink-300">{shift.startTime} - {shift.endTime}</div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button type="button" onClick={() => editShift(shift)} className="rounded-full border border-white/10 px-3 py-1 text-xs">Edit</button>
-                                            <button type="button" onClick={() => removeShift(shift.id)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-red-200">Delete</button>
-                                        </div>
+                <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-soft">
+                    <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Shifts</div>
+                    <p className="mt-3 text-sm text-ink-200">
+                        If your company has only one shift, keep one active 8-hour shift here and assign the same shift to all employees.
+                    </p>
+                    <form onSubmit={shiftForm.handleSubmit(saveShift)} className="mt-4 space-y-3">
+                        <input {...shiftForm.register('id')} type="hidden" />
+                        <input {...shiftForm.register('name')} placeholder="Shift name" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <input {...shiftForm.register('startTime')} type="time" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />
+                            <input {...shiftForm.register('endTime')} type="time" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <input {...shiftForm.register('breakDurationMinutes')} type="number" placeholder="Break minutes" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                            <input {...shiftForm.register('requiredWorkingHours')} type="number" placeholder="Required hours" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <input {...shiftForm.register('graceTimeMinutes')} type="number" placeholder="Grace minutes" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                            <input {...shiftForm.register('overtimeThresholdMinutes')} type="number" placeholder="Overtime threshold" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <select {...shiftForm.register('overnightShift')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                                <option value="false">Not overnight</option>
+                                <option value="true">Overnight</option>
+                            </select>
+                            <select {...shiftForm.register('isActive')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+                                <option value="true">Active</option>
+                                <option value="false">Inactive</option>
+                            </select>
+                        </div>
+                        <button type="submit" className="rounded-full bg-white px-5 py-3 font-medium text-ink-900">
+                            {shiftForm.watch('id') ? 'Update shift' : 'Create shift'}
+                        </button>
+                        <button type="button" onClick={resetShiftFormToSingleShift} className="rounded-full border border-white/15 bg-white/5 px-5 py-3 font-medium text-white">
+                            Use 8-hour template
+                        </button>
+                    </form>
+                    <div className="mt-5 space-y-3 text-sm text-ink-200">
+                        {shifts.length ? shifts.map((shift) => (
+                            <div key={shift.id} className="rounded-2xl border border-white/10 bg-black/15 p-4 text-white">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="font-medium">{shift.name}</div>
+                                        <div className="text-xs uppercase tracking-[0.3em] text-ink-300">{shift.startTime} - {shift.endTime}</div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={() => editShift(shift)} className="rounded-full border border-white/10 px-3 py-1 text-xs">Edit</button>
+                                        <button type="button" onClick={() => removeShift(shift.id)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-red-200">Delete</button>
                                     </div>
                                 </div>
-                            )) : <div>No shifts loaded.</div>}
-                        </div>
-                    </div>
-                    <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-soft">
-                        <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Branches</div>
-                        <form onSubmit={branchForm.handleSubmit(saveBranch)} className="mt-4 space-y-3">
-                            <input {...branchForm.register('id')} type="hidden" />
-                            <input {...branchForm.register('name')} placeholder="Branch name" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                            <input {...branchForm.register('code')} placeholder="Branch code" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                            <input {...branchForm.register('address')} placeholder="Branch address" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <input {...branchForm.register('latitude')} placeholder="Latitude" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                                <input {...branchForm.register('longitude')} placeholder="Longitude" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                                <input {...branchForm.register('radiusMetres')} type="number" placeholder="Radius metres" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                                <select {...branchForm.register('isActive')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
-                                    <option value="true">Active</option>
-                                    <option value="false">Inactive</option>
-                                </select>
+                        )) : (
+                            <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 p-4">
+                                No shifts loaded. Create one active 8-hour shift for your company schedule.
                             </div>
-                            <button type="submit" className="rounded-full bg-white px-5 py-3 font-medium text-ink-900">
-                                {branchForm.watch('id') ? 'Update branch' : 'Create branch'}
-                            </button>
-                        </form>
-                        <div className="mt-5 space-y-3 text-sm text-ink-200">
-                            {branches.length ? branches.map((branch) => (
-                                <div key={branch.id} className="rounded-2xl border border-white/10 bg-black/15 p-4 text-white">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <div className="font-medium">{branch.name}</div>
-                                            <div className="text-xs uppercase tracking-[0.3em] text-ink-300">{branch.code || 'No code'}</div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button type="button" onClick={() => editBranch(branch)} className="rounded-full border border-white/10 px-3 py-1 text-xs">Edit</button>
-                                            <button type="button" onClick={() => removeBranch(branch.id)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-red-200">Delete</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )) : <div>No branches loaded.</div>}
-                        </div>
+                        )}
                     </div>
                 </div>
 
@@ -410,18 +395,12 @@ export default function SettingsPage() {
                     <div className="text-xs uppercase tracking-[0.35em] text-ink-300">Office network policy</div>
                     <h3 className="mt-3 text-2xl font-semibold text-white">Approved kiosk networks</h3>
                     <p className="mt-2 text-sm text-ink-200">
-                        Browsers cannot read the Wi-Fi name directly, so kiosk access is enforced using approved office public IP addresses together with branch geolocation.
+                        Browsers cannot read the Wi-Fi name directly, so kiosk access is enforced using approved office public IP addresses together with your saved office geofence.
                     </p>
                     <form onSubmit={approvedIpForm.handleSubmit(saveApprovedIpAddress)} className="mt-4 grid gap-3 md:grid-cols-2">
                         <input {...approvedIpForm.register('id')} type="hidden" />
                         <input {...approvedIpForm.register('ipAddress')} placeholder="Public IP address" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                         <input {...approvedIpForm.register('description')} placeholder="Description (Office Wi-Fi, Reception kiosk)" className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                        <select {...approvedIpForm.register('branchId')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
-                            <option value="">All branches</option>
-                            {branches.map((branch) => (
-                                <option key={branch.id} value={branch.id}>{branch.name}</option>
-                            ))}
-                        </select>
                         <select {...approvedIpForm.register('isActive')} className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white">
                             <option value="true">Active</option>
                             <option value="false">Inactive</option>
@@ -436,9 +415,7 @@ export default function SettingsPage() {
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <div className="font-medium">{entry.ipAddress}</div>
-                                        <div className="text-xs uppercase tracking-[0.3em] text-ink-300">
-                                            {branches.find((branch) => Number(branch.id) === Number(entry.branchId))?.name || 'All branches'}
-                                        </div>
+                                        <div className="text-xs uppercase tracking-[0.3em] text-ink-300">Office-wide</div>
                                         <div className="mt-2 text-sm text-ink-200">{entry.description || 'No description'}</div>
                                     </div>
                                     <div className="flex gap-2">

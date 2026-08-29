@@ -29,6 +29,14 @@ async function resolveBranch(employee) {
     return models.Branch.findByPk(employee.branchId);
 }
 
+async function resolveOrganisation(organisationId) {
+    if (!organisationId) {
+        return null;
+    }
+
+    return models.Organisation.findByPk(organisationId);
+}
+
 async function resolveTodaySummary(employeeId) {
     const summaryDate = new Date().toISOString().slice(0, 10);
     return models.AttendanceSummary.findOne({
@@ -36,9 +44,12 @@ async function resolveTodaySummary(employeeId) {
     });
 }
 
-function buildAttendanceEmployee(employee, branch) {
+function buildAttendanceEmployee(employee, branch, organisation) {
     return {
         ...employee.toJSON(),
+        officeLatitude: organisation?.officeGeo?.latitude ?? null,
+        officeLongitude: organisation?.officeGeo?.longitude ?? null,
+        officeRadiusMetres: organisation?.attendancePolicies?.geofenceRadius ?? null,
         branchLatitude: branch?.latitude ?? null,
         branchLongitude: branch?.longitude ?? null,
         branchRadiusMetres: branch?.radiusMetres ?? null
@@ -123,13 +134,16 @@ async function markAttendance(request, response, actionType) {
         return response.status(422).json({ message: 'Matched face profile does not map to an active employee' });
     }
 
-    const branch = await resolveBranch(employee);
+    const [branch, organisation] = await Promise.all([
+        resolveBranch(employee),
+        resolveOrganisation(employee.organisationId)
+    ]);
     const shift = await resolveShift(employee);
     const summaryDate = new Date().toISOString().slice(0, 10);
     const { effectiveWindow } = await resolveAttendanceLeaveWindow({ employee, shift, attendanceDate: summaryDate });
     const officeIpPolicy = await resolveOfficeIpPolicy(employee, request);
     const result = await buildCheckInResult({
-        employee: buildAttendanceEmployee(employee, branch),
+        employee: buildAttendanceEmployee(employee, branch, organisation),
         shift,
         liveImage,
         geo: geoLocation,
@@ -309,7 +323,10 @@ export const identify = asyncHandler(async (request, response) => {
         return response.status(422).json({ message: 'Matched face profile does not map to an active employee' });
     }
 
-    const branch = await resolveBranch(employee);
+    const [branch, organisation] = await Promise.all([
+        resolveBranch(employee),
+        resolveOrganisation(employee.organisationId)
+    ]);
     const officeIpPolicy = await resolveOfficeIpPolicy(employee, request);
     const todaySummary = await resolveTodaySummary(employee.id);
     const shift = await resolveShift(employee);
@@ -342,6 +359,11 @@ export const identify = asyncHandler(async (request, response) => {
                 latitude: branch.latitude,
                 longitude: branch.longitude,
                 radiusMetres: branch.radiusMetres
+            } : null,
+            office: organisation?.officeGeo ? {
+                latitude: organisation.officeGeo.latitude,
+                longitude: organisation.officeGeo.longitude,
+                radiusMetres: organisation?.attendancePolicies?.geofenceRadius ?? 150
             } : null
         },
         effectiveWindow: {

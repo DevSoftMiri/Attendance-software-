@@ -7,6 +7,14 @@ async function resolveEmployee(employeeId) {
     return models.Employee.findByPk(employeeId);
 }
 
+async function resolveOrganisation(organisationId) {
+    if (!organisationId) {
+        return null;
+    }
+
+    return models.Organisation.findByPk(organisationId);
+}
+
 function getRequestIp(request) {
     const forwardedFor = request.headers['x-forwarded-for'];
     if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
@@ -46,6 +54,15 @@ async function resolveShift(employee) {
     return models.Shift.findByPk(employee.shiftId);
 }
 
+function buildAttendanceEmployee(employee, organisation) {
+    return {
+        ...employee.toJSON(),
+        officeLatitude: organisation?.officeGeo?.latitude ?? null,
+        officeLongitude: organisation?.officeGeo?.longitude ?? null,
+        officeRadiusMetres: organisation?.attendancePolicies?.geofenceRadius ?? null
+    };
+}
+
 export const checkIn = asyncHandler(async (request, response) => {
     const { employeeId, liveImage, geoLocation = {}, requestMeta = {}, officeIp = {} } = request.body;
     const employee = await resolveEmployee(employeeId);
@@ -55,10 +72,19 @@ export const checkIn = asyncHandler(async (request, response) => {
     }
 
     const shift = await resolveShift(employee);
+    const organisation = await resolveOrganisation(employee.organisationId);
     const summaryDate = new Date().toISOString().slice(0, 10);
     const { effectiveWindow } = await resolveAttendanceLeaveWindow({ employee, shift, attendanceDate: summaryDate });
     const officeIpPolicy = await resolveOfficeIpPolicy(employee, request);
-    const result = await buildCheckInResult({ employee, shift, liveImage, geo: geoLocation, officeIp: officeIpPolicy, requestMeta, effectiveWindow });
+    const result = await buildCheckInResult({
+        employee: buildAttendanceEmployee(employee, organisation),
+        shift,
+        liveImage,
+        geo: geoLocation,
+        officeIp: officeIpPolicy,
+        requestMeta,
+        effectiveWindow
+    });
     const event = await models.AttendanceEvent.create({
         employeeId,
         eventType: 'CHECK_IN',

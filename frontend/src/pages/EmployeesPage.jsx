@@ -10,7 +10,7 @@ function formatDatePickerValue(value) {
 }
 
 export default function EmployeesPage() {
-    const { register, handleSubmit, reset } = useForm();
+    const { register, handleSubmit, reset, setValue } = useForm();
     const [employees, setEmployees] = useState([]);
     const [branches, setBranches] = useState([]);
     const [shifts, setShifts] = useState([]);
@@ -41,6 +41,12 @@ export default function EmployeesPage() {
         loadEmployees();
         loadSettings();
     }, []);
+
+    useEffect(() => {
+        if (!editingEmployeeId && shifts.length === 1) {
+            setValue('shiftId', String(shifts[0].id));
+        }
+    }, [editingEmployeeId, setValue, shifts]);
 
     function beginEdit(employee) {
         setEditingEmployeeId(employee.id);
@@ -158,6 +164,11 @@ export default function EmployeesPage() {
                             <option key={shift.id} value={shift.id}>{shift.name}</option>
                         ))}
                     </select>
+                    {shifts.length === 1 ? (
+                        <div className="sm:col-span-2 text-sm text-ink-200">
+                            The only company shift is selected automatically for new employees.
+                        </div>
+                    ) : null}
                     <input {...register('baseSalary')} placeholder="Base salary" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <input {...register('leaveEntitlement')} type="number" step="0.5" placeholder="Paid leave per month" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
                     <input {...register('unpaidLeaveEntitlement')} type="number" step="0.5" placeholder="Unpaid leave allowance" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
