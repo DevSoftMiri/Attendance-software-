@@ -10,7 +10,7 @@ function formatDatePickerValue(value) {
 }
 
 export default function EmployeesPage() {
-    const { register, handleSubmit, reset, setValue } = useForm();
+    const { register, handleSubmit, reset, setValue, setError, clearErrors, formState: { errors } } = useForm();
     const [employees, setEmployees] = useState([]);
     const [branches, setBranches] = useState([]);
     const [shifts, setShifts] = useState([]);
@@ -93,9 +93,20 @@ export default function EmployeesPage() {
     }
 
     async function onSubmit(values) {
+        const normalizedPhone = String(values.phone || '').replace(/\D/g, '');
+        if (normalizedPhone.length !== 10) {
+            const message = 'Employee cannot be created: phone number must be exactly 10 digits';
+            setError('phone', { type: 'manual', message: 'Phone number must be exactly 10 digits' });
+            toast.error(message);
+            return;
+        }
+
+        clearErrors('phone');
+
         try {
             const payload = {
                 ...values,
+                phone: normalizedPhone,
                 organisationId: 1,
                 organisationInitial: 'M',
                 joiningDate: parseDateInput(values.joiningDate),
@@ -121,7 +132,8 @@ export default function EmployeesPage() {
                 toast.success('Employee created');
             }
         } catch (error) {
-            toast.error(error?.response?.data?.message || (editingEmployeeId ? 'Failed to update employee' : 'Failed to create employee'));
+            const reason = error?.response?.data?.message;
+            toast.error(reason || (editingEmployeeId ? 'Failed to update employee' : 'Failed to create employee'));
         }
     }
 
@@ -141,7 +153,17 @@ export default function EmployeesPage() {
                 <form onSubmit={handleSubmit(onSubmit)} className="mt-6 grid gap-4 sm:grid-cols-2">
                     <input {...register('fullName')} placeholder="Full name" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400 sm:col-span-2" />
                     <input {...register('email')} type="email" placeholder="Email" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
-                    <input {...register('phone')} placeholder="Phone" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400" />
+                    <div>
+                        <input
+                            {...register('phone')}
+                            type="tel"
+                            inputMode="numeric"
+                            maxLength={10}
+                            placeholder="Phone"
+                            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-ink-400"
+                        />
+                        {errors.phone ? <div className="mt-2 text-sm text-red-200">{errors.phone.message}</div> : null}
+                    </div>
                     <label className="grid gap-2">
                         <span className="text-xs uppercase tracking-[0.28em] text-ink-300">Joining date</span>
                         <input {...register('joiningDate')} type="date" className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white" />

@@ -37,12 +37,39 @@ function parseNullableNumber(value) {
     return Number.isNaN(parsed) ? null : parsed;
 }
 
+function normalizePhone(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+
+    if (value === '' || value === null) {
+        return null;
+    }
+
+    return String(value).replace(/\D/g, '');
+}
+
+function assertValidPhone(phone) {
+    if (phone === undefined || phone === null) {
+        return;
+    }
+
+    if (!/^\d{10}$/.test(phone)) {
+        const error = new Error('Phone number must be exactly 10 digits');
+        error.statusCode = 400;
+        throw error;
+    }
+}
+
 function buildEmployeeCreatePayload(body) {
+    const normalizedPhone = normalizePhone(body.phone);
+    assertValidPhone(normalizedPhone);
+
     return {
         organisationId: parseNullableInteger(body.organisationId),
         fullName: body.fullName,
         email: body.email,
-        phone: body.phone || null,
+        phone: normalizedPhone,
         joiningDate: body.joiningDate || null,
         loginTime: body.loginTime || null,
         roleCode: body.roleCode || 'STAFF',
@@ -74,7 +101,8 @@ function buildEmployeeUpdatePayload(body) {
     }
 
     if (body.phone !== undefined) {
-        payload.phone = body.phone || null;
+        payload.phone = normalizePhone(body.phone);
+        assertValidPhone(payload.phone);
     }
 
     if (body.joiningDate !== undefined) {
