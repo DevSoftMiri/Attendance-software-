@@ -28,9 +28,11 @@ export default function PublicAttendancePage() {
     const webcamRef = useRef(null);
     const scanInFlightRef = useRef(false);
     const deferredInstallPromptRef = useRef(null);
+    const locationRequestStartedRef = useRef(false);
     const navigate = useNavigate();
     const installContext = detectInstallContext();
     const [location, setLocation] = useState(null);
+    const [locationStatus, setLocationStatus] = useState('idle');
     const [detectedEmployee, setDetectedEmployee] = useState(null);
     const [policy, setPolicy] = useState(null);
     const [todaySummary, setTodaySummary] = useState(null);
@@ -68,6 +70,26 @@ export default function PublicAttendancePage() {
         setLastResult(null);
         setScanStatus(cameraReady ? 'Scanning for an enrolled face...' : 'Preparing camera...');
         setScanning(true);
+    }
+
+    async function requestLocationAccess(showSuccessToast = false) {
+        setLocationStatus('requesting');
+        const currentLocation = await captureCurrentLocation();
+
+        if (currentLocation) {
+            setLocation(currentLocation);
+            setLocationStatus('granted');
+            if (showSuccessToast) {
+                toast.success('Location permission granted');
+            }
+            return currentLocation;
+        }
+
+        setLocationStatus('unavailable');
+        if (showSuccessToast) {
+            toast.error('Location unavailable. Please allow location access in the browser.');
+        }
+        return null;
     }
 
     useEffect(() => {
@@ -108,6 +130,15 @@ export default function PublicAttendancePage() {
             window.removeEventListener('appinstalled', handleAppInstalled);
         };
     }, [installContext.isStandalone]);
+
+    useEffect(() => {
+        if (locationRequestStartedRef.current) {
+            return;
+        }
+
+        locationRequestStartedRef.current = true;
+        requestLocationAccess();
+    }, []);
 
     useEffect(() => {
         let active = true;
@@ -155,7 +186,7 @@ export default function PublicAttendancePage() {
                 });
                 setScanStatus(`Face detected: ${data.employee.fullName}`);
                 setScanning(false);
-                captureCurrentLocation().then((currentLocation) => {
+                requestLocationAccess().then((currentLocation) => {
                     if (active) {
                         setLocation(currentLocation);
                     }
@@ -259,8 +290,7 @@ export default function PublicAttendancePage() {
                 throw new Error('Unable to capture image');
             }
 
-            const currentLocation = await captureCurrentLocation();
-            setLocation(currentLocation);
+            const currentLocation = await requestLocationAccess();
 
             const { data } = await api.post(
                 actionType === 'CHECK_IN' ? '/public-attendance/check-in' : '/public-attendance/check-out',
@@ -420,6 +450,13 @@ export default function PublicAttendancePage() {
                         </button>
                         <button
                             type="button"
+                            onClick={() => requestLocationAccess(true)}
+                            className="w-full rounded-full border border-white/15 bg-white/5 px-5 py-3.5 text-sm font-medium text-white"
+                        >
+                            {locationStatus === 'requesting' ? 'Requesting location...' : 'Allow Location'}
+                        </button>
+                        <button
+                            type="button"
                             onClick={() => {
                                 if (detectedEmployee?.id) {
                                     resetDetection();
@@ -463,6 +500,13 @@ export default function PublicAttendancePage() {
                                 <div className="text-[11px] uppercase tracking-[0.25em] text-ink-300">Location</div>
                                 <div className="mt-1 break-words text-white">
                                     {location ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}` : 'Not available'}
+                                </div>
+                                <div className="mt-1 text-xs text-ink-300">
+                                    {locationStatus === 'granted'
+                                        ? 'Permission granted'
+                                        : locationStatus === 'requesting'
+                                            ? 'Waiting for browser location permission'
+                                            : 'Tap Allow Location if the browser did not prompt yet'}
                                 </div>
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-white/5 p-3 sm:col-span-2">
